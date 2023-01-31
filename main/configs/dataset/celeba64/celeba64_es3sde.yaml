@@ -1,18 +1,23 @@
 diffusion:
   data:
     root: ???
-    name: "cifar10"
-    image_size: 32
+    name: "celeba64"
+    image_size: 64
     hflip: True
     num_channels: 3
     norm: True
+    apply_cond: False
+    cond_size: 32
 
   model:
-    denoiser:
+    pl_module: 'sde_wrapper'
+    score_fn:
       name: "ncsnpp"
+      in_ch: 3
+      out_ch: 3
       nonlinearity: "swish"
       nf : 128
-      ch_mult: [1,2,2,2]
+      ch_mult: [1,2,2,2,4]
       num_res_blocks: 2
       attn_resolutions: [16,]
       dropout: 0.1
@@ -29,17 +34,28 @@ diffusion:
       init_scale: 0.0
       fourier_scale: 16
       # scale_by_sigma: False  (The Unet always predicts epsilon)
-      n_heads: 8
+      # n_heads: 1
     sde:
-      name: "vpsde"
-      beta_min: 0.1
-      beta_max: 20
+      name: "es3sde"
+      beta_min: 8.0
+      beta_max: 8.0
+      # beta: 8.0
+      nu: 1
+      gamma: 2
+      kappa: 0.04
+      decomp_mode: "lower"
+      numerical_eps: 1e-9
       n_timesteps: 1000
+      is_augmented: True
+      use_ms: False
 
   training:
     seed: 0
     continuous: True
+    mode: 'hsm'
+    use_ms: False
     loss:
+      name: "es3_score_loss"
       l_type: "l2"
       reduce_mean: True
       weighting: "fid"
@@ -54,17 +70,39 @@ diffusion:
       grad_clip: 1.0
     train_eps: 1e-5
     fp16: False
-    use_ema: False
+    use_ema: True
     ema_decay: 0.9999
     batch_size: 32
     epochs: 5000
     log_step: 1
-    device: "gpu:0"
+    accelerator: "gpu"
+    devices: [0]
     chkpt_interval: 1
     restore_path: ""
     results_dir: ???
-    workers: 2
+    workers: 1
     chkpt_prefix: ""
+
+  evaluation:
+    # Sampler specific config goes here
+    sampler:
+      name: em_sde
+    seed: 0
+    chkpt_path: ???
+    save_path: ???
+    n_discrete_steps: 1000
+    denoise: True
+    eval_eps: 1e-3
+    stride_type: uniform
+    use_pflow: False
+    sample_from: "target"
+    accelerator: "gpu"
+    devices: [0]
+    n_samples: 50000
+    workers: 2
+    batch_size: 64
+    save_mode: image
+    sample_prefix: "gpu"
 
 # VAE config used for VAE training
 vae:

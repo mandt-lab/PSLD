@@ -8,7 +8,7 @@ from tqdm import tqdm
 from util import register_module
 
 
-@register_module(category="datasets", name='celebahq')
+@register_module(category="datasets", name='celebahq256')
 class CelebAHQDataset(Dataset):
     def __init__(self, root, norm=True, subsample_size=None, transform=None, **kwargs):
         if not os.path.isdir(root):

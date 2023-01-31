@@ -1,13 +1,17 @@
+import logging
 import os
 from typing import Sequence, Union
 
 import torch
 from pytorch_lightning import Callback, LightningModule, Trainer
 from pytorch_lightning.callbacks import BasePredictionWriter
+from pytorch_lightning.callbacks import Callback
 from torch import Tensor
 from torch.nn import Module
 
 from util import save_as_images, save_as_np
+
+logger = logging.getLogger(__name__)
 
 
 class EMAWeightUpdate(Callback):
@@ -33,6 +37,7 @@ class EMAWeightUpdate(Callback):
         """
         super().__init__()
         self.tau = tau
+        logger.info(f'Setup EMA callback with tau: {self.tau}')
 
     def on_train_batch_end(
         self,
@@ -41,11 +46,10 @@ class EMAWeightUpdate(Callback):
         outputs: Sequence,
         batch: Sequence,
         batch_idx: int,
-        dataloader_idx: int,
     ) -> None:
         # get networks
-        online_net = pl_module.online_network.decoder
-        target_net = pl_module.target_network.decoder
+        online_net = pl_module.score_fn
+        target_net = pl_module.ema_score_fn
 
         # update weights
         self.update_weights(online_net, target_net)
@@ -64,24 +68,20 @@ class ImageWriter(BasePredictionWriter):
         self,
         output_dir,
         write_interval,
-        compare=False,
         n_steps=None,
         eval_mode="sample",
         conditional=True,
         sample_prefix="",
-        save_vae=False,
         save_mode="image",
         is_norm=True,
     ):
         super().__init__(write_interval)
         assert eval_mode in ["sample", "recons"]
         self.output_dir = output_dir
-        self.compare = compare
         self.n_steps = 1000 if n_steps is None else n_steps
         self.eval_mode = eval_mode
         self.conditional = conditional
         self.sample_prefix = sample_prefix
-        self.save_vae = save_vae
         self.is_norm = is_norm
         self.save_fn = save_as_images if save_mode == "image" else save_as_np
 
@@ -134,21 +134,61 @@ class ImageWriter(BasePredictionWriter):
                 denorm=self.is_norm,
             )
 
-        # FIXME: This is currently broken. Separate this from the core logic
-        # into a new function. Uncomment when ready!
-        # if self.compare:
-        #     # Save comparisons
-        #     (_, img_samples), _ = batch
-        #     img_samples = normalize(img_samples).cpu()
-        #     iter_ = vae_samples if self.eval_mode == "sample" else img_samples
-        #     for idx, (ddpm_pred, pred) in enumerate(zip(ddpm_samples, iter_)):
-        #         samples = {
-        #             "VAE" if self.eval_mode == "sample" else "Original": pred,
-        #             "DDPM": ddpm_pred,
-        #         }
-        #         compare_samples(
-        #             samples,
-        #             save_path=os.path.join(
-        #                 self.comp_save_path, f"compare_form1_{rank}_{idx}.png"
-        #             ),
-        #         )
+
+class SimpleImageWriter(BasePredictionWriter):
+    def __init__(
+        self,
+        output_dir,
+        write_interval,
+        n_steps=None,
+        eval_mode="sample",
+        conditional=True,
+        sample_prefix="",
+        save_mode="image",
+        is_norm=True,
+        is_augmented=True,
+    ):
+        super().__init__(write_interval)
+        assert eval_mode in ["sample", "recons"]
+        self.output_dir = output_dir
+        self.n_steps = 1000 if n_steps is None else n_steps
+        self.eval_mode = eval_mode
+        self.conditional = conditional
+        self.sample_prefix = sample_prefix
+        self.is_norm = is_norm
+        self.is_augmented = is_augmented
+        self.save_fn = save_as_images if save_mode == "image" else save_as_np
+
+    def write_on_batch_end(
+        self,
+        trainer,
+        pl_module,
+        prediction,
+        batch_indices,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        rank = pl_module.global_rank
+
+        # Write output images
+        # NOTE: We need to use gpu rank during saving to prevent
+        # processes from overwriting images
+        samples = prediction.cpu()
+
+        if self.is_augmented:
+            samples, _ = torch.chunk(samples, 2, dim=1)
+
+        # Setup dirs
+        base_save_path = os.path.join(self.output_dir, str(self.n_steps))
+        img_save_path = os.path.join(base_save_path, "images")
+        os.makedirs(img_save_path, exist_ok=True)
+
+        # Save
+        self.save_fn(
+            samples,
+            file_name=os.path.join(
+                img_save_path, f"output_{self.sample_prefix }_{rank}_{batch_idx}"
+            ),
+            denorm=self.is_norm,
+        )

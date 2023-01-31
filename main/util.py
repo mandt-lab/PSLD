@@ -11,6 +11,24 @@ logger = logging.getLogger(__name__)
 _MODULES = {}
 
 
+def reshape(t, rt):
+    # Adds additional dimensions corresponding to the size of the reference tensor rt
+    if len(rt.shape) == len(t.shape):
+        return t
+    ones = [1] * len(rt.shape[1:])
+    t_ = t.view(-1, *ones)
+    assert len(t_.shape) == len(rt.shape)
+    return t_
+
+
+def data_scaler(img, norm=True):
+    if norm:
+        img = (np.asarray(img).astype(np.float) / 127.5) - 1.0
+    else:
+        img = np.asarray(img).astype(np.float) / 255.0
+    return img
+
+
 def register_module(category=None, name=None):
     """A decorator for registering model classes."""
 
@@ -103,6 +121,15 @@ def get_dataset(config):
         t_list.append(T.RandomHorizontalFlip())
     transform = T.Compose(t_list)
 
+    c_transform = None
+    if config.data.apply_cond:
+        logger.info(
+            "Found conditional transforms. Will construct a conditional dataset"
+        )
+        c_transform = T.Compose(
+            [T.Resize((config.data.cond_size, config.data.cond_size))]
+        )
+
     # Get dataset
     dataset_cls = get_module(category="datasets", name=name.lower())
     if dataset_cls is None:
@@ -110,7 +137,7 @@ def get_dataset(config):
             f"Dataset with name: {name} not found in category: `datasets`. Ensure its properly registered"
         )
 
-    return dataset_cls(root, norm=norm, transform=transform)
+    return dataset_cls(root, norm=norm, transform=transform, cond_transform=c_transform)
 
 
 def import_modules_into_registry():
@@ -118,6 +145,7 @@ def import_modules_into_registry():
     import datasets
     import losses
     import models
+    import samplers
 
 
 def plot_interpolations(interpolations, save_path=None, figsize=(10, 5)):

@@ -1,16 +1,19 @@
+from difflib import restore
 import logging
 import os
+from copy import deepcopy
 
 import hydra
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.seed import seed_everything
 from torch.utils.data import DataLoader
 
 from callbacks import EMAWeightUpdate
 from models.wrapper import SDEWrapper
-from util import configure_device, get_dataset, get_module, import_modules_into_registry
+from util import get_dataset, get_module, import_modules_into_registry
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +36,41 @@ def train(config):
     logger.info(f"Using Dataset: {dataset} with size: {len(dataset)}")
 
     # Setup score predictor
-    denoiser_cls = get_module(category="denoiser", name=config.model.denoiser.name)
-    denoiser = denoiser_cls(config)
-    logger.info(f"Using Denoiser Backend: {denoiser_cls}")
+    score_fn_cls = get_module(category="score_fn", name=config.model.score_fn.name)
+    score_fn = score_fn_cls(config)
+    logger.info(f"Using Score fn: {score_fn_cls}")
+
+    # Setup target network for EMA
+    ema_score_fn = deepcopy(score_fn)
+    for p in ema_score_fn.parameters():
+        p.requires_grad = False
 
     # Setup Score SDE
     sde_cls = get_module(category="sde", name=config.model.sde.name)
     sde = sde_cls(config)
-    logger.info(f"Using SDE Backend: {sde_cls}")
+    logger.info(f"Using SDE: {sde_cls} with type: {sde.type}")
+    logger.info(sde)
 
     # Setup Loss fn
-    criterion_cls = get_module(category="losses", name="score_loss")
-    logger.info(f"Using Loss Backend: {criterion_cls}")
+    criterion_cls = get_module(category="losses", name=config.training.loss.name)
+    criterion = criterion_cls(config, sde)
+    logger.info(f"Using Loss: {criterion_cls}")
 
     # Setup Lightning Wrapper Module
-    wrapper = SDEWrapper(config, denoiser, sde, criterion_cls)
+    wrapper_cls = get_module(category='pl_modules', name=config.model.pl_module)
+    wrapper = wrapper_cls(
+        config, sde, score_fn, ema_score_fn=ema_score_fn, criterion=criterion
+    )
 
     # Setup Trainer
     train_kwargs = {}
-    restore_path = config.training.restore_path
-    if restore_path != "":
-        # Restore checkpoint
-        train_kwargs["resume_from_checkpoint"] = restore_path
 
     # Setup callbacks
     results_dir = config.training.results_dir
     chkpt_callback = ModelCheckpoint(
         dirpath=os.path.join(results_dir, "checkpoints"),
-        filename=f"vpsde-{config.training.chkpt_prefix}" + "-{epoch:02d}-{loss:.4f}",
+        filename=f"{config.model.sde.name}-{config.training.chkpt_prefix}"
+        + "-{epoch:02d}-{loss:.4f}",
         every_n_epochs=config.training.chkpt_interval,
         save_on_train_epoch_end=True,
     )
@@ -69,23 +79,20 @@ def train(config):
     train_kwargs["max_epochs"] = config.training.epochs
     train_kwargs["log_every_n_steps"] = config.training.log_step
     train_kwargs["callbacks"] = [chkpt_callback]
-
     if config.training.use_ema:
         ema_callback = EMAWeightUpdate(tau=config.training.ema_decay)
         train_kwargs["callbacks"].append(ema_callback)
 
-    device = config.training.device
+    device_type = config.training.accelerator
+    train_kwargs["accelerator"] = device_type
     loader_kws = {}
-    if device.startswith("gpu"):
-        _, devs = configure_device(device)
-        train_kwargs["gpus"] = devs
+    if device_type == "gpu":
+        train_kwargs["devices"] = config.training.devices
 
         # Disable find_unused_parameters when using DDP training for performance reasons
-        from pytorch_lightning.plugins import DDPPlugin, DDPSpawnPlugin
-
-        train_kwargs["plugins"] = DDPPlugin(find_unused_parameters=False)
+        train_kwargs["strategy"] = DDPStrategy(find_unused_parameters=False)
         loader_kws["persistent_workers"] = True
-    elif device == "tpu":
+    elif device_type == "tpu":
         train_kwargs["tpu_cores"] = 8
 
     # Half precision training
@@ -107,7 +114,12 @@ def train(config):
 
     logger.info(f"Running Trainer with kwargs: {train_kwargs}")
     trainer = pl.Trainer(**train_kwargs)
-    trainer.fit(wrapper, train_dataloader=loader)
+
+    restore_path = config.training.restore_path
+    if restore_path == "":
+        # Restore checkpoint
+        restore_path = None
+    trainer.fit(wrapper, train_dataloaders=loader, ckpt_path=restore_path)
 
 
 if __name__ == "__main__":

@@ -48,6 +48,6 @@ class CelebADataset(Dataset):
 
 
 if __name__ == "__main__":
-    root = "/data/kushagrap20/datasets/img_align_celeba"
+    root = "/home/pandeyk1/datasets/img_align_celeba"
     dataset = CelebADataset(root, subsample_size=10000)
     print(len(dataset))

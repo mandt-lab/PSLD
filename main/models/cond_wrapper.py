@@ -8,8 +8,8 @@ from util import register_module
 logger = logging.getLogger(__name__)
 
 
-@register_module(category="pl_modules", name="sde_wrapper")
-class SDEWrapper(pl.LightningModule):
+@register_module(category="pl_modules", name="cond_sde_wrapper")
+class CondSDEWrapper(pl.LightningModule):
     def __init__(
         self,
         config,
@@ -61,7 +61,7 @@ class SDEWrapper(pl.LightningModule):
         optim = self.optimizers()
         lr_sched = self.lr_schedulers()
 
-        x_0 = batch
+        x_0, cond = batch
 
         # Sample timepoints (between [eps, 1])
         t_ = torch.rand(x_0.shape[0], device=x_0.device, dtype=torch.float64)
@@ -69,7 +69,7 @@ class SDEWrapper(pl.LightningModule):
         assert t.shape[0] == x_0.shape[0]
 
         # Compute loss
-        loss = self.criterion(x_0, t, self.score_fn)
+        loss = self.criterion(x_0, cond, t, self.score_fn)
 
         # Clip gradients and Optimize
         optim.zero_grad()

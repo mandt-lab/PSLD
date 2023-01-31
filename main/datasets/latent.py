@@ -42,6 +42,27 @@ class LatentDataset(Dataset):
         return int(self.z_vae.size(0))
 
 
+class SDELatentDataset(Dataset):
+    # A dataset to generate samples from the equilibrium distribution
+    # of the forward SDE
+    def __init__(self, sde, config):
+        self.sde = sde
+        self.num_samples = config.evaluation.n_samples
+        self.shape = [
+            self.num_samples,
+            config.data.num_channels,
+            config.data.image_size,
+            config.data.image_size,
+        ]
+        self.samples = self.sde.prior_sampling(self.shape)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+    def __len__(self):
+        return self.num_samples
+
+
 class UncondLatentDataset(Dataset):
     def __init__(self, z_ddpm_size, **kwargs):
         # NOTE: The batch index must be included in the latent code size input
