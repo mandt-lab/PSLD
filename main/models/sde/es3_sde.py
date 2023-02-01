@@ -248,6 +248,7 @@ class ES3SDE(SDE):
         ms_m = torch.zeros_like(m_t)
         ms_x = torch.zeros_like(x_t)
         if self.use_ms:
+            ms_x = x_t / reshape(var[2], x_t)
             ms_m = m_t / reshape(var[2], m_t)
 
         # Score = -L_t^{-T} \epsilon

@@ -43,6 +43,9 @@ def sample(config):
     for p in ema_score_fn.parameters():
         p.requires_grad = False
 
+    score_fn.eval()
+    ema_score_fn.eval()
+
     # Setup Score SDE
     sde_cls = get_module(category="sde", name=config.model.sde.name)
     sde = sde_cls(config)
