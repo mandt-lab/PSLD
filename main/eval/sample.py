@@ -95,10 +95,10 @@ def sample(config):
     write_callback = SimpleImageWriter(
         config.evaluation.save_path,
         "batch",
-        n_steps=config.evaluation.n_discrete_steps,
         eval_mode="sample",
         conditional=False,
         sample_prefix=config.evaluation.sample_prefix,
+        path_prefix=config.evaluation.path_prefix,
         save_mode=config.evaluation.save_mode,
         is_augmented=config.model.sde.is_augmented
     )

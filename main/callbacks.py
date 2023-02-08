@@ -140,10 +140,10 @@ class SimpleImageWriter(BasePredictionWriter):
         self,
         output_dir,
         write_interval,
-        n_steps=None,
         eval_mode="sample",
         conditional=True,
         sample_prefix="",
+        path_prefix="",
         save_mode="image",
         is_norm=True,
         is_augmented=True,
@@ -151,10 +151,10 @@ class SimpleImageWriter(BasePredictionWriter):
         super().__init__(write_interval)
         assert eval_mode in ["sample", "recons"]
         self.output_dir = output_dir
-        self.n_steps = 1000 if n_steps is None else n_steps
         self.eval_mode = eval_mode
         self.conditional = conditional
         self.sample_prefix = sample_prefix
+        self.path_prefix = path_prefix
         self.is_norm = is_norm
         self.is_augmented = is_augmented
         self.save_fn = save_as_images if save_mode == "image" else save_as_np
@@ -180,7 +180,10 @@ class SimpleImageWriter(BasePredictionWriter):
             samples, _ = torch.chunk(samples, 2, dim=1)
 
         # Setup dirs
-        base_save_path = os.path.join(self.output_dir, str(self.n_steps))
+        if self.path_prefix != "":
+            base_save_path = os.path.join(self.output_dir, self.path_prefix)
+        else:
+            base_save_path = self.output_dir
         img_save_path = os.path.join(base_save_path, "images")
         os.makedirs(img_save_path, exist_ok=True)
 

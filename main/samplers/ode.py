@@ -16,6 +16,10 @@ class BBODESampler(Sampler):
         self.method = config.evaluation.sampler.method
         self.solver_opts = config.evaluation.sampler.solver_opts
 
+    @property
+    def n_steps(self):
+        return self.nfe
+
     def predictor_update_fn(self, x, t, dt):
         f, g = self.sde.reverse_sde(x, t, self.score_fn, probability_flow=False)
         x_mean = x + f * dt

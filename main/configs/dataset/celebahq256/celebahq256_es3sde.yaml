@@ -17,7 +17,7 @@ diffusion:
       out_ch: 6
       nonlinearity: "swish"
       nf : 128
-      ch_mult: [1,1,2,2,2,4]
+      ch_mult: [1,1,2,2,2,2,2]
       num_res_blocks: 2
       attn_resolutions: [16,]
       dropout: 0.1
@@ -39,11 +39,11 @@ diffusion:
       name: "es3sde"
       beta_min: 8.0
       beta_max: 8.0
-      nu: 1
-      gamma: 2
+      nu: 4.01
+      gamma: 0.01
       kappa: 0.04
       decomp_mode: "lower"
-      numerical_eps: 1e-9
+      numerical_eps: 1e-6
       n_timesteps: 1000
       is_augmented: True
       use_ms: False

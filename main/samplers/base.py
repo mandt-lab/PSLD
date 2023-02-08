@@ -10,7 +10,10 @@ class Sampler(abc.ABC):
         self.sde = sde
         self.score_fn = score_fn
         self.corrector_fn = corrector_fn
-        self.nfe = 0
+    
+    @property
+    def n_steps(self):
+        return self.config.evaluation.n_discrete_steps
 
     @abc.abstractmethod
     def predictor_update_fn(self, x, t, dt):

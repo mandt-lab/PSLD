@@ -31,7 +31,7 @@ class SDEWrapper(pl.LightningModule):
         self.train_eps = self.config.training.train_eps
 
         # Evaluation
-        self.predictor = None
+        self.sampler = None
         if sampler_cls is not None:
             self.sampler = sampler_cls(
                 self.config,

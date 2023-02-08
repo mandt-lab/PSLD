@@ -103,6 +103,7 @@ diffusion:
     batch_size: 64
     save_mode: image
     sample_prefix: "gpu"
+    path_prefix: ""
 
 # VAE config used for VAE training
 vae:
