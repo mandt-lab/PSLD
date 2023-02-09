@@ -7,25 +7,29 @@ from util import register_module
 
 @register_module(category="samplers", name="bb_ode")
 class BBODESampler(Sampler):
-    def __init__(self, config, sde, score_fn, mode="reverse"):
-        super().__init__(config, sde, score_fn)
-        self.mode = mode
+    def __init__(self, config, sde, score_fn, corrector_fn=None):
+        super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
         self.nfe = 0
         self.rtol = config.evaluation.sampler.rtol
         self.atol = config.evaluation.sampler.atol
-        self.method = config.evaluation.sampler.method
-        self.solver_opts = config.evaluation.sampler.solver_opts
+        self.solver_opts = {'solver': config.evaluation.sampler.solver}
+
+        self._counter = 0
 
     @property
     def n_steps(self):
         return self.nfe
 
+    @property
+    def mean_nfe(self):
+        if self._counter != 0:
+            return self.nfe / self._counter
+        raise ValueError('Run .sample() to compute mean_nfe')
+
     def predictor_update_fn(self, x, t, dt):
-        f, g = self.sde.reverse_sde(x, t, self.score_fn, probability_flow=False)
+        f, _ = self.sde.reverse_sde(x, t, self.score_fn, probability_flow=True)
         x_mean = x + f * dt
-        noise = g * torch.sqrt(dt) * torch.randn_like(x)
-        x = x_mean + noise
-        return x, x_mean
+        return x_mean
 
     def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
         def ode_fn(t, x):
@@ -35,6 +39,7 @@ class BBODESampler(Sampler):
             return f
 
         x = batch
+        self._counter += 1
 
         time_tensor = torch.tensor(
             [0.0, self.sde.T - eps], dtype=torch.float64, device=x.device
@@ -46,12 +51,14 @@ class BBODESampler(Sampler):
             time_tensor,
             rtol=self.rtol,
             atol=self.atol,
-            method=self.method,
+            method='scipy_solver',
             options=self.solver_opts,
         )
 
         x = solution[-1]
 
+        # Denoise
         if denoise:
-            _, x = self.predictor_update_fn(x, self.sde.T - eps, eps)
+            x = self.predictor_update_fn(x, torch.ones(x.shape[0], device=x.device, dtype=torch.float64) * (self.sde.T - eps), eps)
+            self.nfe += 1
         return x

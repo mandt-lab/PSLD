@@ -181,7 +181,7 @@ class SimpleImageWriter(BasePredictionWriter):
 
         # Setup dirs
         if self.path_prefix != "":
-            base_save_path = os.path.join(self.output_dir, self.path_prefix)
+            base_save_path = os.path.join(self.output_dir, str(self.path_prefix))
         else:
             base_save_path = self.output_dir
         img_save_path = os.path.join(base_save_path, "images")

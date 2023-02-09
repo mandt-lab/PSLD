@@ -196,3 +196,58 @@ class SSCSSampler(Sampler):
                     reshape(torch.tensor(eps, device=x.device), x),
                 )
         return x
+
+
+@register_module(category="samplers", name="msscs_sde")
+class ModifiedSSCSSampler(Sampler):
+    """Sampler based on an alternate splitting scheme
+    """
+    def __init__(self, config, sde, score_fn, corrector_fn=None):
+        super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
+
+    def analytical_dynamics(self, u, t, dt):
+        pass
+
+    def euler_score_dynamics(self, u, t, dt):
+        pass
+
+    def predictor_update_fn(self, u, t, dt):
+        t = t * torch.ones(u.shape[0], device=u.device, dtype=torch.float64)
+        u = self.analytical_dynamics(u, t, dt / 2)
+        u = self.euler_score_dynamics(u, t, dt)
+        u = self.analytical_dynamics(u, t, dt / 2)
+        return u
+
+    def denoising_fn(self, x, t, dt):
+        f, g = self.sde.reverse_sde(
+            x,
+            t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
+            self.score_fn,
+            probability_flow=False,
+        )
+        x_mean = x + f * dt
+        noise = g * torch.sqrt(dt) * torch.randn_like(x)
+        x = x_mean + noise
+        return x_mean
+
+    def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
+        x = batch
+        self.nfe = n_discrete_steps
+
+        # Sample
+        with torch.no_grad():
+            for t_idx in range(n_discrete_steps):
+                dt = ts[t_idx + 1] - ts[t_idx]
+                # Predictor step
+                x = self.predictor_update_fn(x, ts[t_idx], dt)
+
+                # Corrector_step
+                x, _ = self.corrector_update_fn(x, ts[t_idx], dt)
+
+            if denoise:
+                x = self.denoising_fn(
+                    x,
+                    torch.tensor(self.sde.T - eps, device=x.device),
+                    reshape(torch.tensor(eps, device=x.device), x),
+                )
+        return x
