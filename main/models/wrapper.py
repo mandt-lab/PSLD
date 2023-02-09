@@ -68,15 +68,16 @@ class SDEWrapper(pl.LightningModule):
         t = t_ * (self.sde.T - self.train_eps) + self.train_eps
         assert t.shape[0] == x_0.shape[0]
 
-        # Compute loss
+        # Compute loss and backward
         loss = self.criterion(x_0, t, self.score_fn)
-
-        # Clip gradients and Optimize
         optim.zero_grad()
         self.manual_backward(loss)
-        torch.nn.utils.clip_grad_norm_(
-            self.score_fn.parameters(), self.config.training.optimizer.grad_clip
-        )
+
+        # Clip gradients (if enabled.)
+        if self.config.training.optimizer.grad_clip != 0:
+            torch.nn.utils.clip_grad_norm_(
+                self.score_fn.parameters(), self.config.training.optimizer.grad_clip
+            )
         optim.step()
 
         # Scheduler step
