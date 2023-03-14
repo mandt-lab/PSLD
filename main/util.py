@@ -137,7 +137,13 @@ def get_dataset(config):
             f"Dataset with name: {name} not found in category: `datasets`. Ensure its properly registered"
         )
 
-    return dataset_cls(root, norm=norm, transform=transform, cond_transform=c_transform)
+    return dataset_cls(
+        root,
+        norm=norm,
+        transform=transform,
+        cond_transform=c_transform,
+        return_target=config.data.return_target,
+    )
 
 
 def import_modules_into_registry():

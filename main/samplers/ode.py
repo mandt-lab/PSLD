@@ -27,6 +27,9 @@ class BBODESampler(Sampler):
         raise ValueError('Run .sample() to compute mean_nfe')
 
     def predictor_update_fn(self, x, t, dt):
+        pass
+
+    def denoise_fn(self, x, t, dt):
         f, _ = self.sde.reverse_sde(x, t, self.score_fn, probability_flow=True)
         x_mean = x + f * dt
         return x_mean
@@ -59,6 +62,6 @@ class BBODESampler(Sampler):
 
         # Denoise
         if denoise:
-            x = self.predictor_update_fn(x, torch.ones(x.shape[0], device=x.device, dtype=torch.float64) * (self.sde.T - eps), eps)
+            x = self.denoise_fn(x, torch.ones(x.shape[0], device=x.device, dtype=torch.float64) * (self.sde.T - eps), eps)
             self.nfe += 1
         return x

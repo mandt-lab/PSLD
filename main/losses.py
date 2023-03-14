@@ -9,6 +9,14 @@ from util import get_module, register_module, reshape
 logger = logging.getLogger(__name__)
 
 
+def compute_top_k(logits, labels, k, reduction="mean"):
+    _, top_ks = torch.topk(logits, k, dim=-1)
+    if reduction == "mean":
+        return (top_ks == labels[:, None]).float().sum(dim=-1).mean().item()
+    elif reduction == "none":
+        return (top_ks == labels[:, None]).float().sum(dim=-1)
+
+
 @register_module(category="losses", name="score_loss")
 class ScoreLoss(nn.Module):
     def __init__(self, config, sde):
@@ -239,3 +247,46 @@ class CondES3ScoreLoss(nn.Module):
 
         loss = torch.mean(loss) if self.reduce_strategy == "mean" else torch.sum(loss)
         return loss
+
+
+@register_module(category="losses", name="tce_loss")
+class ES3TimeCELoss(nn.Module):
+    def __init__(self, config, sde):
+        super().__init__()
+        assert config.diffusion.training.mode in ["hsm", "dsm"]
+        assert isinstance(sde, get_module("sde", "es3sde"))
+        self.sde = sde
+        self.l_type = config.clf.training.loss.l_type
+        self.mode = config.diffusion.training.mode
+
+        self.reduce_strategy = "mean" if config.diffusion.training.loss.reduce_mean else "sum"
+        self.criterion = nn.CrossEntropyLoss(reduction=self.reduce_strategy)
+
+    def forward(self, x_0, y, t, clf_fn):
+        # Sample momentum (DSM)
+        m_0 = np.sqrt(self.sde.mm_0) * torch.randn_like(x_0)
+        mm_0 = 0.0
+
+        # Update momentum (if training mode is HSM)
+        if self.mode == "hsm":
+            m_0 = torch.zeros_like(x_0)
+            mm_0 = self.sde.mm_0
+
+        u_0 = torch.cat([x_0, m_0], dim=1)
+        xx_0 = 0
+
+        # Sample random noise
+        eps = torch.randn_like(u_0)
+
+        # Perturb Data
+        u_t, _, _ = self.sde.perturb_data(x_0, m_0, xx_0, mm_0, t, eps=eps)
+
+        # Predict label
+        y_pred = clf_fn(u_t.type(torch.float32), t)
+
+        # CE loss
+        loss = self.criterion(y_pred, y)
+
+        # Top-k accuracy (for debugging)
+        acc = compute_top_k(y_pred, y, 1)
+        return loss, acc

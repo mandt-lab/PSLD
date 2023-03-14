@@ -1,6 +1,8 @@
+import numpy as np
 import torch
+import torch.nn.functional as F
 
-from util import get_module, register_module, reshape
+from util import register_module, reshape
 from .base import Sampler
 
 
@@ -29,8 +31,6 @@ class EulerMaruyamaSampler(Sampler):
             probability_flow=False,
         )
         x_mean = x + f * dt
-        # noise = g * torch.sqrt(dt) * torch.randn_like(x)
-        # x = x_mean + noise
         return x_mean
 
     def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
@@ -53,6 +53,157 @@ class EulerMaruyamaSampler(Sampler):
                     torch.tensor(self.sde.T - eps, device=x.device),
                     reshape(torch.tensor(eps, device=x.device), x),
                 )
+        return x
+
+
+@register_module(category="samplers", name="cc_em_sde")
+class ClassCondEulerMaruyamaSampler(Sampler):
+    def __init__(self, config, sde, score_fn, clf_fn, corrector_fn=None):
+        super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
+        self.clf_fn = clf_fn
+        self.y = self.config.clf.evaluation.label_to_sample
+        self.clf_temp = self.config.clf.evaluation.clf_temp
+
+    def predictor_update_fn(self, x, t, dt):
+        # Drift and diffusion coefficients
+        f, g = self.sde.reverse_sde(
+            x,
+            t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
+            self.score_fn,
+            probability_flow=False,
+        )
+
+        # Classifier prediction and guidance gradient
+        with torch.inference_mode(False):
+            x_in = x.clone().requires_grad_()
+            logits = self.clf_fn(x_in.type(torch.float32), t * torch.ones(x.shape[0], device=x.device, dtype=torch.float32))
+            log_probs = F.log_softmax(logits, dim=-1)
+            selected = log_probs[range(len(logits)), self.y]
+            grad = torch.autograd.grad(selected.sum(), x_in)[0] * self.clf_temp
+
+        # Guide
+        f = f + (g ** 2) * grad
+
+        # Sampler step
+        x_mean = x + f * dt
+        noise = g * torch.sqrt(dt) * torch.randn_like(x)
+        x = x_mean + noise
+        return x, x_mean
+
+    def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
+        x = batch
+        self.nfe = n_discrete_steps
+
+        # Sample
+        with torch.no_grad():
+            for t_idx in range(n_discrete_steps):
+                dt = reshape(ts[t_idx + 1] - ts[t_idx], x)
+                # Predictor step
+                x, _ = self.predictor_update_fn(x, ts[t_idx], dt)
+
+                # Corrector_step
+                x, _ = self.corrector_update_fn(x, ts[t_idx], dt)
+
+            if denoise:
+                _, x = self.predictor_update_fn(
+                    x,
+                    torch.tensor(self.sde.T - eps, device=x.device),
+                    reshape(torch.tensor(eps, device=x.device), x),
+                )
+        return x
+
+
+@register_module(category="samplers", name="ip_em_sde")
+class ES3EulerMaruyamaInpainter(Sampler):
+    def __init__(self, config, sde, score_fn, corrector_fn=None):
+        super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
+
+    def _perturb(self, x_0, t):
+        # Sample momentum (DSM)
+        m_0 = np.sqrt(self.sde.mm_0) * torch.randn_like(x_0)
+        mm_0 = 0.0
+
+        # Update momentum (if training mode is HSM)
+        if self.config.training.mode == "hsm":
+            m_0 = torch.zeros_like(x_0)
+            mm_0 = self.sde.mm_0
+
+        u_0 = torch.cat([x_0, m_0], dim=1)
+        xx_0 = 0
+        eps = torch.randn_like(u_0)
+
+        u_t, mu_t, _ = self.sde.perturb_data(x_0, m_0, xx_0, mm_0, t, eps=eps)
+        return u_t, mu_t
+
+    def predictor_update_fn(self, x, t, dt):
+        # Drift and diffusion coefficients
+        f, g = self.sde.reverse_sde(
+            x,
+            t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
+            self.score_fn,
+            probability_flow=False,
+        )
+
+        # Sampler step
+        x_mean = x + f * dt
+        noise = g * torch.sqrt(dt) * torch.randn_like(x)
+        x = x_mean + noise
+
+        return x, x_mean
+
+    def inpaint_update_fn(self, x, t, dt, mask, x_0, update_fn):
+        # Update step
+        x, x_mean = update_fn(x, t, dt)
+
+        # Split-Perturb-Combine
+        x_c, m_c = torch.chunk(x, 2, dim=1)
+        u_k, mu_k = self._perturb(x_0, (self.sde.T - t) * torch.ones(x.shape[0], device=x.device, dtype=torch.float64))
+        x_k, m_k = torch.chunk(u_k, 2, dim=1)
+        x_c = x_c * (1 - mask) + x_k * mask
+        m_c = m_c * (1 - mask) + m_k * mask
+        x = torch.cat([x_c, m_c], dim=1)
+
+        mx_k, mm_k = torch.chunk(mu_k, 2, dim=1)
+        mx_c, mm_c = torch.chunk(x_mean, 2, dim=1)
+        mx_c = mx_c * (1 - mask) + mx_k * mask
+        mm_c = mm_c * (1 - mask) + mm_k * mask
+        x_mean = torch.cat([mx_c, mm_c], dim=1)
+        return x, x_mean
+
+    def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
+        x_0, mask = batch
+        self.nfe = n_discrete_steps
+
+        # Initial latent
+        x = self.sde.prior_sampling(x_0.shape).to(ts.device)
+        x_c, m_c = torch.chunk(x, 2, dim=1)
+        u_k, _ = self._perturb(x_0, self.sde.T * torch.ones(x.shape[0], device=x.device, dtype=torch.float64))
+        x_k, m_k = torch.chunk(u_k, 2, dim=1)
+        x_c = x_c * (1 - mask) + x_k * mask
+        m_c = m_c * (1 - mask) + m_k * mask
+        x = torch.cat([x_c, m_c], dim=1)
+
+        # Sample
+        with torch.no_grad():
+            for t_idx in range(n_discrete_steps):
+                dt = reshape(ts[t_idx + 1] - ts[t_idx], x)
+
+                # Predictor step
+                x, _ = self.inpaint_update_fn(x, ts[t_idx], dt, mask, x_0, self.predictor_update_fn)
+
+                # Corrector_step
+                # x, _ = self.inpaint_update_fn(x, ts[t_idx], dt, mask, x_0, self.corrector_update_fn)
+
+            if denoise:
+                _, x = self.inpaint_update_fn(
+                    x,
+                    torch.tensor(self.sde.T - eps, device=x.device),
+                    reshape(torch.tensor(eps, device=x.device), x),
+                    mask,
+                    x_0,
+                    self.predictor_update_fn
+                )
+
         return x
 
 

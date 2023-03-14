@@ -4,15 +4,17 @@ import logging
 import os
 import sys
 
+from copy import deepcopy
+
 p = os.path.join(os.path.abspath("."), "main")
 sys.path.insert(1, p)
 
-from copy import deepcopy
-
 import hydra
 import pytorch_lightning as pl
+import torch
 from callbacks import SimpleImageWriter
 from datasets.latent import SDELatentDataset
+from models.clf_wrapper import TClfWrapper
 from models.wrapper import SDEWrapper
 from omegaconf import OmegaConf
 from pytorch_lightning.utilities.seed import seed_everything
@@ -28,53 +30,73 @@ import_modules_into_registry()
 
 @hydra.main(config_path=os.path.join(p, "configs"))
 def sample(config):
-    config = config.dataset.diffusion
+    config = config.dataset
+    config_sde = config.diffusion
+    config_clf = config.clf
     logger.info(OmegaConf.to_yaml(config))
 
     # Set seed
-    seed_everything(config.evaluation.seed)
+    seed_everything(config_clf.evaluation.seed)
+
+    # Setup Score SDE
+    sde_cls = get_module(category="sde", name=config_sde.model.sde.name)
+    sde = sde_cls(config_sde)
+    logger.info(f"Using SDE: {sde_cls}")
 
     # Setup score predictor
-    score_fn_cls = get_module(category="score_fn", name=config.model.score_fn.name)
-    score_fn = score_fn_cls(config)
+    score_fn_cls = get_module(category="score_fn", name=config_sde.model.score_fn.name)
+    score_fn = score_fn_cls(config_sde)
     logger.info(f"Using Score fn: {score_fn_cls}")
 
     ema_score_fn = deepcopy(score_fn)
     for p in ema_score_fn.parameters():
         p.requires_grad = False
 
-    score_fn.eval()
-    ema_score_fn.eval()
-
-    # Setup Score SDE
-    sde_cls = get_module(category="sde", name=config.model.sde.name)
-    sde = sde_cls(config)
-    logger.info(f"Using SDE: {sde_cls}")
-
-    # Setup sampler
-    sampler_cls = get_module(category="samplers", name=config.evaluation.sampler.name)
-    logger.info(f"Using Sampler: {sampler_cls}")
-
-    # Setup dataset
-    dataset = SDELatentDataset(sde, config)
-    logger.info(f"Using Dataset: {dataset} with size: {len(dataset)}")
-
     wrapper = SDEWrapper.load_from_checkpoint(
-        config.evaluation.chkpt_path,
-        config=config,
+        config_sde.evaluation.chkpt_path,
+        config=config_sde,
         sde=sde,
         score_fn=score_fn,
         ema_score_fn=ema_score_fn,
-        sampler_cls=sampler_cls,
+        sampler_cls=None,
     )
+
+    score_fn = wrapper.ema_score_fn if config_sde.evaluation.sample_from == 'target' else wrapper.score_fn
+    score_fn.eval()
+
+    # Setup sampler
+    # Only class conditional (cc) samplers allowed
+    assert config_sde.evaluation.sampler.name.startswith('cc')
+    sampler_cls = get_module(category="samplers", name=config_sde.evaluation.sampler.name)
+    logger.info(f"Using Sampler: {sampler_cls}")
+
+    # Setup dataset
+    dataset = SDELatentDataset(sde, config_sde)
+    logger.info(f"Using Dataset: {dataset} with size: {len(dataset)}")
+
+    # Setup classifier
+    clf_fn_cls = get_module(category="clf_fn", name=config_clf.model.clf_fn.name)
+    clf_fn = clf_fn_cls(config_clf)
+    logger.info(f"Using Classifier fn: {clf_fn_cls}")
+
+    wrapper = TClfWrapper.load_from_checkpoint(
+        config_clf.evaluation.chkpt_path,
+        config=config,
+        sde=sde,
+        clf_fn=clf_fn,
+        score_fn=score_fn,
+        sampler_cls=sampler_cls,
+        strict=False
+    )
+    wrapper.eval()
 
     # Setup devices
     test_kwargs = {}
     loader_kws = {}
-    device_type = config.evaluation.accelerator
+    device_type = config_sde.evaluation.accelerator
     test_kwargs["accelerator"] = device_type
     if device_type == "gpu":
-        test_kwargs["devices"] = config.evaluation.devices
+        test_kwargs["devices"] = config_sde.evaluation.devices
         # # Disable find_unused_parameters when using DDP training for performance reasons
         # loader_kws["persistent_workers"] = True
     elif device_type == "tpu":
@@ -83,28 +105,28 @@ def sample(config):
     # Predict loader
     val_loader = DataLoader(
         dataset,
-        batch_size=config.evaluation.batch_size,
+        batch_size=config_sde.evaluation.batch_size,
         drop_last=False,
         pin_memory=True,
         shuffle=False,
-        num_workers=config.evaluation.workers,
+        num_workers=config_sde.evaluation.workers,
         **loader_kws,
     )
 
     # Setup Image writer callback trainer
     write_callback = SimpleImageWriter(
-        config.evaluation.save_path,
+        config_sde.evaluation.save_path,
         "batch",
         eval_mode="sample",
         conditional=False,
-        sample_prefix=config.evaluation.sample_prefix,
-        path_prefix=config.evaluation.path_prefix,
-        save_mode=config.evaluation.save_mode,
-        is_augmented=config.model.sde.is_augmented
+        sample_prefix=config_sde.evaluation.sample_prefix,
+        path_prefix=config_sde.evaluation.path_prefix,
+        save_mode=config_sde.evaluation.save_mode,
+        is_augmented=config_sde.model.sde.is_augmented
     )
 
     test_kwargs["callbacks"] = [write_callback]
-    test_kwargs["default_root_dir"] = config.evaluation.save_path
+    test_kwargs["default_root_dir"] = config_sde.evaluation.save_path
     sampler = pl.Trainer(**test_kwargs)
     sampler.predict(wrapper, val_loader)
 

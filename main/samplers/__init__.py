@@ -1,2 +1,2 @@
-from .sde import EulerMaruyamaSampler
+from .sde import EulerMaruyamaSampler, ClassCondEulerMaruyamaSampler
 from .ode import BBODESampler

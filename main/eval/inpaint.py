@@ -11,13 +11,13 @@ from copy import deepcopy
 
 import hydra
 import pytorch_lightning as pl
-from callbacks import SimpleImageWriter
-from datasets.latent import SDELatentDataset
+from callbacks import InpaintingImageWriter
+from datasets import InpaintDataset
 from models.wrapper import SDEWrapper
 from omegaconf import OmegaConf
 from pytorch_lightning.utilities.seed import seed_everything
 from torch.utils.data import DataLoader
-from util import get_module, import_modules_into_registry
+from util import get_module, import_modules_into_registry, get_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,8 @@ def sample(config):
     logger.info(f"Using Sampler: {sampler_cls}")
 
     # Setup dataset
-    dataset = SDELatentDataset(sde, config)
+    base_dataset = get_dataset(config)
+    dataset = InpaintDataset(config, base_dataset)
     logger.info(f"Using Dataset: {dataset} with size: {len(dataset)}")
 
     wrapper = SDEWrapper.load_from_checkpoint(
@@ -92,15 +93,15 @@ def sample(config):
     )
 
     # Setup Image writer callback trainer
-    write_callback = SimpleImageWriter(
+    write_callback = InpaintingImageWriter(
         config.evaluation.save_path,
         "batch",
         eval_mode="sample",
-        conditional=False,
         sample_prefix=config.evaluation.sample_prefix,
         path_prefix=config.evaluation.path_prefix,
         save_mode=config.evaluation.save_mode,
-        is_augmented=config.model.sde.is_augmented
+        is_augmented=config.model.sde.is_augmented,
+        save_batch=True,
     )
 
     test_kwargs["callbacks"] = [write_callback]

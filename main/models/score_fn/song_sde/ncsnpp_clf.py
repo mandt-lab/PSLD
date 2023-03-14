@@ -32,23 +32,21 @@ get_normalization = normalization.get_normalization
 default_initializer = layers.default_init
 
 
-@register_module(category="score_fn", name="ncsnpp")
-class NCSNpp(nn.Module):
-    """NCSN++ model"""
+@register_module(category="clf_fn", name="ncsnpp_clf")
+class NCSNppClassifier(nn.Module):
+    """NCSN++ Classifier model for Class conditional generation. Same as the NCSN++ but removes the upsampling stage"""
 
     def __init__(self, config):
         super().__init__()
         self.config = config.model
-        # self.iscentered = config.data.norm
-        self.act = act = get_act(self.config.score_fn)
-        # self.register_buffer('sigmas', torch.tensor(utils.get_sigmas(self.config)))
+        self.act = act = get_act(self.config.clf_fn)
 
-        self.nf = nf = self.config.score_fn.nf
-        ch_mult = self.config.score_fn.ch_mult
-        self.num_res_blocks = num_res_blocks = self.config.score_fn.num_res_blocks
-        self.attn_resolutions = attn_resolutions = self.config.score_fn.attn_resolutions
-        dropout = self.config.score_fn.dropout
-        resamp_with_conv = self.config.score_fn.resamp_with_conv
+        self.nf = nf = self.config.clf_fn.nf
+        ch_mult = self.config.clf_fn.ch_mult
+        self.num_res_blocks = num_res_blocks = self.config.clf_fn.num_res_blocks
+        self.attn_resolutions = attn_resolutions = self.config.clf_fn.attn_resolutions
+        dropout = self.config.clf_fn.dropout
+        resamp_with_conv = self.config.clf_fn.resamp_with_conv
         self.num_resolutions = num_resolutions = len(ch_mult)
         self.all_resolutions = all_resolutions = [
             config.data.image_size // (2**i) for i in range(num_resolutions)
@@ -56,23 +54,21 @@ class NCSNpp(nn.Module):
 
         self.noise_cond = (
             noise_cond
-        ) = self.config.score_fn.noise_cond  # noise-conditional
-        fir = self.config.score_fn.fir
-        fir_kernel = self.config.score_fn.fir_kernel
-        self.skip_rescale = skip_rescale = self.config.score_fn.skip_rescale
-        self.resblock_type = resblock_type = self.config.score_fn.resblock_type.lower()
-        self.progressive = progressive = self.config.score_fn.progressive.lower()
+        ) = self.config.clf_fn.noise_cond  # noise-conditional
+        fir = self.config.clf_fn.fir
+        fir_kernel = self.config.clf_fn.fir_kernel
+        self.skip_rescale = skip_rescale = self.config.clf_fn.skip_rescale
+        self.resblock_type = resblock_type = self.config.clf_fn.resblock_type.lower()
+        self.progressive = progressive = self.config.clf_fn.progressive.lower()
         self.progressive_input = (
             progressive_input
-        ) = self.config.score_fn.progressive_input.lower()
-        self.embedding_type = (
-            embedding_type
-        ) = self.config.score_fn.embedding_type.lower()
-        init_scale = self.config.score_fn.init_scale
+        ) = self.config.clf_fn.progressive_input.lower()
+        self.embedding_type = embedding_type = self.config.clf_fn.embedding_type.lower()
+        init_scale = self.config.clf_fn.init_scale
         assert progressive in ["none", "output_skip", "residual"]
         assert progressive_input in ["none", "input_skip", "residual"]
         assert embedding_type in ["fourier", "positional"]
-        combine_method = self.config.score_fn.progressive_combine.lower()
+        combine_method = self.config.clf_fn.progressive_combine.lower()
         combiner = functools.partial(Combine, method=combine_method)
 
         modules = []
@@ -85,7 +81,7 @@ class NCSNpp(nn.Module):
 
             modules.append(
                 layerspp.GaussianFourierProjection(
-                    embedding_size=nf, scale=self.config.score_fn.fourier_scale
+                    embedding_size=nf, scale=self.config.clf_fn.fourier_scale
                 )
             )
             embed_dim = 2 * nf
@@ -107,22 +103,6 @@ class NCSNpp(nn.Module):
         AttnBlock = functools.partial(
             layerspp.AttnBlockpp, init_scale=init_scale, skip_rescale=skip_rescale
         )
-
-        Upsample = functools.partial(
-            layerspp.Upsample,
-            with_conv=resamp_with_conv,
-            fir=fir,
-            fir_kernel=fir_kernel,
-        )
-
-        if progressive == "output_skip":
-            self.pyramid_upsample = layerspp.Upsample(
-                fir=fir, fir_kernel=fir_kernel, with_conv=False
-            )
-        elif progressive == "residual":
-            pyramid_upsample = functools.partial(
-                layerspp.Upsample, fir=fir, fir_kernel=fir_kernel, with_conv=True
-            )
 
         Downsample = functools.partial(
             layerspp.Downsample,
@@ -167,7 +147,7 @@ class NCSNpp(nn.Module):
 
         # Downsampling block
 
-        channels = self.config.score_fn.in_ch
+        channels = self.config.clf_fn.in_ch
         if progressive_input != "none":
             input_pyramid_ch = channels
 
@@ -210,77 +190,10 @@ class NCSNpp(nn.Module):
         modules.append(AttnBlock(channels=in_ch))
         modules.append(ResnetBlock(in_ch=in_ch))
 
-        pyramid_ch = 0
-        # Upsampling block
-        for i_level in reversed(range(num_resolutions)):
-            for i_block in range(num_res_blocks + 1):
-                out_ch = nf * ch_mult[i_level]
-                modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(), out_ch=out_ch))
-                in_ch = out_ch
-
-            if all_resolutions[i_level] in attn_resolutions:
-                modules.append(AttnBlock(channels=in_ch))
-
-            if progressive != "none":
-                if i_level == num_resolutions - 1:
-                    if progressive == "output_skip":
-                        modules.append(
-                            nn.GroupNorm(
-                                num_groups=min(in_ch // 4, 32),
-                                num_channels=in_ch,
-                                eps=1e-6,
-                            )
-                        )
-                        modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
-                        pyramid_ch = channels
-                    elif progressive == "residual":
-                        modules.append(
-                            nn.GroupNorm(
-                                num_groups=min(in_ch // 4, 32),
-                                num_channels=in_ch,
-                                eps=1e-6,
-                            )
-                        )
-                        modules.append(conv3x3(in_ch, in_ch, bias=True))
-                        pyramid_ch = in_ch
-                    else:
-                        raise ValueError(f"{progressive} is not a valid name.")
-                else:
-                    if progressive == "output_skip":
-                        modules.append(
-                            nn.GroupNorm(
-                                num_groups=min(in_ch // 4, 32),
-                                num_channels=in_ch,
-                                eps=1e-6,
-                            )
-                        )
-                        modules.append(
-                            conv3x3(in_ch, channels, bias=True, init_scale=init_scale)
-                        )
-                        pyramid_ch = channels
-                    elif progressive == "residual":
-                        modules.append(pyramid_upsample(in_ch=pyramid_ch, out_ch=in_ch))
-                        pyramid_ch = in_ch
-                    else:
-                        raise ValueError(f"{progressive} is not a valid name")
-
-            if i_level != 0:
-                if resblock_type == "ddpm":
-                    modules.append(Upsample(in_ch=in_ch))
-                else:
-                    modules.append(ResnetBlock(in_ch=in_ch, up=True))
-
-        assert not hs_c
-
-        if progressive != "output_skip":
-            modules.append(
-                nn.GroupNorm(
-                    num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6
-                )
-            )
-            modules.append(
-                conv3x3(in_ch, self.config.score_fn.out_ch, init_scale=init_scale)
-            )
+        # Construct classifier
+        self.n_cls = config.model.clf_fn.n_cls
+        last_res = all_resolutions[-1]
+        modules.append(nn.Linear(in_ch * last_res**2, self.n_cls, bias=False))
 
         self.all_modules = nn.ModuleList(modules)
 
@@ -311,10 +224,6 @@ class NCSNpp(nn.Module):
             m_idx += 1
         else:
             temb = None
-
-        # if not self.iscentered:
-        #     # If input data is in [0, 1]
-        #     x = 2 * x - 1.0
 
         # Downsampling block
         input_pyramid = None
@@ -366,73 +275,9 @@ class NCSNpp(nn.Module):
         h = modules[m_idx](h, temb)
         m_idx += 1
 
-        pyramid = None
+        # Apply Classifier
+        h = torch.flatten(h, start_dim=1)
+        h = modules[m_idx](h)
 
-        # Upsampling block
-        for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks + 1):
-                h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
-                m_idx += 1
-
-            if h.shape[-1] in self.attn_resolutions:
-                h = modules[m_idx](h)
-                m_idx += 1
-
-            if self.progressive != "none":
-                if i_level == self.num_resolutions - 1:
-                    if self.progressive == "output_skip":
-                        pyramid = self.act(modules[m_idx](h))
-                        m_idx += 1
-                        pyramid = modules[m_idx](pyramid)
-                        m_idx += 1
-                    elif self.progressive == "residual":
-                        pyramid = self.act(modules[m_idx](h))
-                        m_idx += 1
-                        pyramid = modules[m_idx](pyramid)
-                        m_idx += 1
-                    else:
-                        raise ValueError(f"{self.progressive} is not a valid name.")
-                else:
-                    if self.progressive == "output_skip":
-                        pyramid = self.pyramid_upsample(pyramid)
-                        pyramid_h = self.act(modules[m_idx](h))
-                        m_idx += 1
-                        pyramid_h = modules[m_idx](pyramid_h)
-                        m_idx += 1
-                        pyramid = pyramid + pyramid_h
-                    elif self.progressive == "residual":
-                        pyramid = modules[m_idx](pyramid)
-                        m_idx += 1
-                        if self.skip_rescale:
-                            pyramid = (pyramid + h) / np.sqrt(2.0)
-                        else:
-                            pyramid = pyramid + h
-                        h = pyramid
-                    else:
-                        raise ValueError(f"{self.progressive} is not a valid name")
-
-            if i_level != 0:
-                if self.resblock_type == "ddpm":
-                    h = modules[m_idx](h)
-                    m_idx += 1
-                else:
-                    h = modules[m_idx](h, temb)
-                    m_idx += 1
-
-        assert not hs
-
-        if self.progressive == "output_skip":
-            h = pyramid
-        else:
-            h = self.act(modules[m_idx](h))
-            m_idx += 1
-            h = modules[m_idx](h)
-            m_idx += 1
-
-        assert m_idx == len(modules)
-        # Whether to scale by Sigma (we dont use it here)
-        # if self.config.score_fn.scale_by_sigma:
-        #   used_sigmas = used_sigmas.reshape((x.shape[0], *([1] * len(x.shape[1:]))))
-        #   h = h / used_sigmas
-
+        assert h.shape[-1] == self.n_cls
         return h

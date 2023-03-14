@@ -1,137 +1,193 @@
+# TODO: Pull the config for data, training and evaluation out from the SDE and clf specific configs
+---
 diffusion:
   data:
     root: ???
-    name: "cifar10"
+    name: cifar10
     image_size: 32
-    hflip: True
+    hflip: true
     num_channels: 3
-    norm: True
-    apply_cond: False
+    norm: true
+    apply_cond: false
     cond_size: 16
-
   model:
-    pl_module: 'sde_wrapper'
+    pl_module: sde_wrapper
     score_fn:
-      name: "ncsnpp"
-      in_ch: 3
-      out_ch: 3
-      nonlinearity: "swish"
-      nf : 128
-      ch_mult: [1,2,2,2]
+      name: ncsnpp
+      in_ch: 6
+      out_ch: 6
+      nonlinearity: swish
+      nf: 128
+      ch_mult:
+        - 1
+        - 2
+        - 2
+        - 2
       num_res_blocks: 4
-      attn_resolutions: [16,]
+      attn_resolutions:
+        - 16
       dropout: 0.1
-      resamp_with_conv: True
-      noise_cond: True
-      fir: False
-      fir_kernel: [1,3,3,1]
-      skip_rescale: True
-      resblock_type: "biggan"
-      progressive: "none"
-      progressive_input: "none"
-      progressive_combine: "sum"
-      embedding_type: "positional"
-      init_scale: 0.0
+      resamp_with_conv: true
+      noise_cond: true
+      fir: false
+      fir_kernel:
+        - 1
+        - 3
+        - 3
+        - 1
+      skip_rescale: true
+      resblock_type: biggan
+      progressive: none
+      progressive_input: none
+      progressive_combine: sum
+      embedding_type: positional
+      init_scale: 0
       fourier_scale: 16
-      # scale_by_sigma: False  (The Unet always predicts epsilon)
-      # n_heads: 1
     sde:
-      name: "es3sde"
-      beta_min: 8.0
-      beta_max: 8.0
-      # beta: 8.0
-      nu: 1
-      gamma: 2
+      name: es3sde
+      beta_min: 8
+      beta_max: 8
+      nu: 4.01
+      gamma: 0.01
       kappa: 0.04
-      decomp_mode: "lower"
+      decomp_mode: lower
       numerical_eps: 1e-9
       n_timesteps: 1000
-      is_augmented: True
-      use_ms: False
-
+      is_augmented: true
+      use_ms: false
   training:
     seed: 0
-    continuous: True
-    mode: 'hsm'
-    use_ms: False
+    continuous: true
+    mode: hsm
+    use_ms: false
     loss:
-      name: "es3_score_loss"
-      l_type: "l2"
-      reduce_mean: True
-      weighting: "fid"
+      name: es3_score_loss
+      l_type: l2
+      reduce_mean: true
+      weighting: fid
     optimizer:
-      name: "Adam"
-      lr: 2e-4
+      name: Adam
+      lr: 0.0002
       beta_1: 0.9
       beta_2: 0.999
       weight_decay: 0
       eps: 1e-8
       warmup: 5000
-      grad_clip: 1.0
-    train_eps: 1e-5
-    fp16: False
-    use_ema: True
+      grad_clip: 1
+    train_eps: 0.00001
+    fp16: false
+    use_ema: true
     ema_decay: 0.9999
     batch_size: 32
     epochs: 5000
     log_step: 1
-    accelerator: "gpu"
-    devices: [0]
+    accelerator: gpu
+    devices:
+      - 0
     chkpt_interval: 1
     restore_path: ""
     results_dir: ???
     workers: 1
     chkpt_prefix: ""
-
   evaluation:
-    # Sampler specific config goes here
     sampler:
       name: em_sde
     seed: 0
     chkpt_path: ???
     save_path: ???
     n_discrete_steps: 1000
-    denoise: True
-    eval_eps: 1e-3
+    denoise: true
+    eval_eps: 0.001
     stride_type: uniform
-    use_pflow: False
-    sample_from: "target"
-    accelerator: "gpu"
-    devices: [0]
+    use_pflow: false
+    sample_from: target
+    accelerator: gpu
+    devices:
+      - 0
     n_samples: 50000
     workers: 2
     batch_size: 64
     save_mode: image
-    sample_prefix: "gpu"
+    sample_prefix: gpu
     path_prefix: ""
-
-# VAE config used for VAE training
-vae:
+clf:
   data:
     root: ???
-    name: "cifar10"
+    name: cifar10
     image_size: 32
-    n_channels: 3
-    hflip: False
-
+    hflip: true
+    num_channels: 3
+    norm: true
+    apply_cond: false
+    cond_size: 16
+    return_target: true
   model:
-    enc_block_config : "32x7,32d2,32t16,16x4,16d2,16t8,8x4,8d2,8t4,4x3,4d4,4t1,1x3"
-    enc_channel_config: "32:64,16:128,8:256,4:256,1:512"
-    dec_block_config: "1x1,1u4,1t4,4x2,4u2,4t8,8x3,8u2,8t16,16x7,16u2,16t32,32x15"
-    dec_channel_config: "32:64,16:128,8:256,4:256,1:512"
-
+    pl_module: tclf_wrapper
+    clf_fn:
+      name: ncsnpp_clf
+      in_ch: 6
+      nonlinearity: swish
+      nf: 128
+      ch_mult:
+        - 1
+        - 2
+        - 2
+        - 2
+      num_res_blocks: 2
+      attn_resolutions:
+        - 16
+      dropout: 0.1
+      resamp_with_conv: true
+      noise_cond: true
+      fir: false
+      fir_kernel:
+        - 1
+        - 3
+        - 3
+        - 1
+      skip_rescale: true
+      resblock_type: biggan
+      progressive: none
+      progressive_input: none
+      progressive_combine: sum
+      embedding_type: positional
+      init_scale: 0
+      fourier_scale: 16
+      n_cls: ???
   training:
     seed: 0
-    fp16: False
-    batch_size: 128
-    epochs: 1000
+    continuous: true
+    loss:
+      name: tce_loss
+      l_type: l2
+      reduce_mean: true
+    optimizer:
+      name: Adam
+      lr: 0.0002
+      beta_1: 0.9
+      beta_2: 0.999
+      weight_decay: 0
+      eps: 1e-8
+      warmup: 5000
+    fp16: false
+    batch_size: 32
+    epochs: 500
     log_step: 1
-    device: "gpu:0"
+    accelerator: gpu
+    devices:
+      - 0
     chkpt_interval: 1
-    optimizer: "Adam"
-    lr: 1e-4
     restore_path: ""
     results_dir: ???
-    workers: 2
+    workers: 1
     chkpt_prefix: ""
-    alpha: 1.0
+  evaluation:
+    seed: 0
+    chkpt_path: ???
+    accelerator: gpu
+    devices:
+      - 0
+    workers: 1
+    batch_size: 64
+    clf_temp: 1.0
+    label_to_sample: 0

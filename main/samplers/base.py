@@ -16,7 +16,7 @@ class Sampler(abc.ABC):
         return self.config.evaluation.n_discrete_steps
 
     @abc.abstractmethod
-    def predictor_update_fn(self, x, t, dt):
+    def predictor_update_fn(self):
         raise NotImplementedError
 
     def corrector_update_fn(self, x, t, dt):

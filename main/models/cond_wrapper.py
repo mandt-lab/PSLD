@@ -8,8 +8,8 @@ from util import register_module
 logger = logging.getLogger(__name__)
 
 
-@register_module(category="pl_modules", name="cond_sde_wrapper")
-class CondSDEWrapper(pl.LightningModule):
+@register_module(category="pl_modules", name="mom_cond_sde_wrapper")
+class MomCondSDEWrapper(pl.LightningModule):
     def __init__(
         self,
         config,

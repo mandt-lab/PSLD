@@ -56,6 +56,9 @@ class SDELatentDataset(Dataset):
         ]
         self.samples = self.sde.prior_sampling(self.shape)
 
+    def get_batch(self, shape):
+        return self.sde.prior_sampling(shape)
+
     def __getitem__(self, idx):
         return self.samples[idx]
 
