@@ -84,6 +84,7 @@ diffusion:
     # Sampler specific config goes here
     sampler:
       name: em_sde
+      clip: False
     seed: 0
     chkpt_path: ???
     save_path: ???

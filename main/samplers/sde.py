@@ -17,6 +17,7 @@ class EulerMaruyamaSampler(Sampler):
             t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
             self.score_fn,
             probability_flow=False,
+            clip=self.clip
         )
         x_mean = x + f * dt
         noise = g * torch.sqrt(dt) * torch.randn_like(x)

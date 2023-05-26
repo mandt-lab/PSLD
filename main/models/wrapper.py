@@ -95,7 +95,13 @@ class SDEWrapper(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=None):
         t_final = self.sde.T - self.eval_eps
-        ts = torch.linspace(0, t_final, self.n_discrete_steps + 1, device=self.device, dtype=torch.float64)
+        ts = torch.linspace(
+            0,
+            t_final,
+            self.n_discrete_steps + 1,
+            device=self.device,
+            dtype=torch.float64,
+        )
 
         if self.stride_type == "uniform":
             pass
@@ -103,11 +109,15 @@ class SDEWrapper(pl.LightningModule):
             ts = t_final * torch.flip(1 - (ts / t_final) ** 2.0, dims=[0])
 
         return self.sampler.sample(
-            batch, ts, self.n_discrete_steps, denoise=self.denoise, eps=self.eval_eps
+            batch,
+            ts,
+            self.n_discrete_steps,
+            denoise=self.denoise,
+            eps=self.eval_eps,
         )
 
     def on_predict_end(self):
-        if isinstance(self.sampler, get_module('samplers', 'bb_ode')):
+        if isinstance(self.sampler, get_module("samplers", "bb_ode")):
             print(self.sampler.mean_nfe)
 
     def configure_optimizers(self):

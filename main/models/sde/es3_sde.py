@@ -301,6 +301,68 @@ class ES3SDE(SDE):
             return u_t, eps, mu_t, var
         return u_t, mu_t, var
 
+    def predict_x_from_eps(self, u_t, eps, t):
+        var = self._cov(0.0, self.mm_0, t)
+        l11, l12, l21, l22 = self.get_coeff(var)
+
+        eps_x, eps_m = torch.chunk(eps, 2, dim=1)
+        scaled_eps_x = l11 * eps_x + l12 * eps_m
+        scaled_eps_m = l21 * eps_x + l22 * eps_m
+
+        # Predict mean
+        u_x, u_m = torch.chunk(u_t, 2, dim=1)
+        mu_x = u_x - scaled_eps_x
+        mu_m = u_m - scaled_eps_m
+
+        # Predict reconstruction
+        mu_lam = (self.nu + self.gamma) / 4
+        b_t = self.b_t(t)
+        scaling_factor = torch.exp(mu_lam * b_t)
+        A_1 = (self.nu - self.gamma) / 4
+        A_2 = (self.gamma - self.nu) ** 2 / 8
+        C_1 = -0.5
+        C_2 = (self.gamma - self.nu) / 4
+
+        C = torch.tensor([[A_1 * b_t + 1, A_2 * b_t], [C_1 * b_t, C_2 * b_t + 1]], device=u_t.device)
+        C_inv = torch.linalg.inv(C)
+        C_inv_sc = C_inv * scaling_factor
+        c11, c12, c21, c22 = C_inv_sc[0, 0], C_inv_sc[0, 1], C_inv_sc[1, 0], C_inv_sc[1, 1]
+
+        x_recons = c11 * mu_x + c12 * mu_m
+        m_recons = c21 * mu_x + c22 * mu_m
+
+        return x_recons, m_recons
+
+    def clip_and_predict_eps(self, z, eps, t):
+        # Predict reconstruction
+        x_recons, m_recons = self.predict_x_from_eps(z, eps, t)
+        x_recons = x_recons.clip(-1.0, 1.0)
+        m_recons = torch.zeros_like(x_recons)
+
+        # Compute eps_pred with new reconstruction
+        mu_lam = (self.nu + self.gamma) / 4
+        b_t = self.b_t(t)
+        scaling_factor = torch.exp(-mu_lam * b_t)
+        A_1 = (self.nu - self.gamma) / 4
+        A_2 = (self.gamma - self.nu) ** 2 / 8
+        C_1 = -0.5
+        C_2 = (self.gamma - self.nu) / 4
+
+        S_t = torch.tensor([[A_1 * b_t + 1, A_2 * b_t], [C_1 * b_t, C_2 * b_t + 1]], device=z.device) * scaling_factor
+        s11, s12, s21, s22 = S_t[0,0], S_t[0,1], S_t[1,0], S_t[1,1]
+        sr_x = s11 * x_recons + s12 * m_recons
+        sr_m = s21 * x_recons + s22 * m_recons
+        sr = torch.cat([sr_x, sr_m], dim=1)
+
+        diff = z - sr
+        diff_x, diff_m = torch.chunk(diff, 2, dim=1)
+        var_t = self._cov(0, self.mm_0, t)
+        li11, li12, li21, li22 = self.get_inv_coeff(var_t)
+        s_eps_x = li11 * diff_x + li21 * diff_m
+        s_eps_m = li12 * diff_x + li22 * diff_m
+
+        return s_eps_x, s_eps_m
+
     def sde(self, u_t, t):
         """Return the drift and diffusion coefficients"""
         x_t, m_t = torch.chunk(u_t, 2, dim=1)
@@ -317,7 +379,7 @@ class ES3SDE(SDE):
             (diffusion_x, diffusion_v), dim=1
         )
 
-    def reverse_sde(self, u_t, t, score_fn, probability_flow=False):
+    def reverse_sde(self, u_t, t, score_fn, probability_flow=False, clip=False):
         """Return the drift and diffusion coefficients of the reverse sde"""
         # The reverse SDE is defines on the domain (T-t)
         t = self.T - t
@@ -327,6 +389,9 @@ class ES3SDE(SDE):
 
         # scale the score by 0.5 for the prob. flow formulation
         eps_pred = score_fn(u_t.type(torch.float32), t.type(torch.float32))
+        if clip:
+            eps_x, eps_m = self.clip_and_predict_eps(u_t, eps_pred, t[0])
+            eps_pred = torch.cat([eps_x, eps_m], dim=1)
         score = self.get_score(u_t, 0, self.mm_0, eps_pred, t)
         score = 0.5 * score if probability_flow else score
 
