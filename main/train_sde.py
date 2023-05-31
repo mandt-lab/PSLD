@@ -89,7 +89,7 @@ def train(config):
         train_kwargs["devices"] = config.training.devices
 
         # Disable find_unused_parameters when using DDP training for performance reasons
-        train_kwargs["strategy"] = DDPStrategy(find_unused_parameters=False)
+        # train_kwargs["strategy"] = DDPStrategy(find_unused_parameters=False)
         loader_kws["persistent_workers"] = True
     elif device_type == "tpu":
         train_kwargs["tpu_cores"] = 8
@@ -113,7 +113,7 @@ def train(config):
 
     # Trainer
     logger.info(f"Running Trainer with kwargs: {train_kwargs}")
-    trainer = pl.Trainer(**train_kwargs)
+    trainer = pl.Trainer(**train_kwargs, strategy='ddp')
 
     # Restore checkpoint
     restore_path = config.training.restore_path
