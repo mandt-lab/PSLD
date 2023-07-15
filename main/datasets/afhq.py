@@ -1,18 +1,23 @@
 import os
 
-import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from tqdm import tqdm
+from util import data_scaler, register_module
 
-from util import register_module
 
-
-@register_module(category="datasets", name='afhqv2')
+@register_module(category="datasets", name="afhqv2")
 class AFHQv2Dataset(Dataset):
-    def __init__(self, root, norm=True, subsample_size=None, return_target=False, transform=None, **kwargs):
-        # We only train on the AFHQ train set
+    def __init__(
+        self,
+        root,
+        norm=True,
+        subsample_size=None,
+        return_target=False,
+        transform=None,
+        **kwargs,
+    ):
         if not os.path.isdir(root):
             raise ValueError(f"The specified root: {root} does not exist")
         self.root = root
@@ -24,9 +29,10 @@ class AFHQv2Dataset(Dataset):
         self.images = []
         self.labels = []
 
-        subfolder_list = ["dog", "cat", "wild"]
-        # subfolder_list = ["wild"]
-        base_path = os.path.join(self.root, "train")
+        cat = kwargs.get("cat", [])
+        is_train = kwargs.get("train", True)
+        subfolder_list = ["dog", "cat", "wild"] if cat == [] else cat
+        base_path = os.path.join(self.root, "train" if is_train else "test")
         for idx, subfolder in enumerate(subfolder_list):
             sub_path = os.path.join(base_path, subfolder)
 
@@ -40,20 +46,15 @@ class AFHQv2Dataset(Dataset):
         if self.transform is not None:
             img = self.transform(img)
 
-        if self.norm:
-            img = (np.asarray(img).astype(np.float) / 127.5) - 1.0
-        else:
-            img = np.asarray(img).astype(np.float) / 255.0
+        # Scale images between [-1, 1] or [0, 1]
+        # Normalize
+        img = data_scaler(img, norm=self.norm)
 
+        # Return Targets actually returns the class-label based on the animal category.
+        # This is only helpful when using guidance using generation.
         if self.return_target:
             return torch.from_numpy(img).permute(2, 0, 1).float(), self.labels[idx]
         return torch.from_numpy(img).permute(2, 0, 1).float()
 
     def __len__(self):
         return len(self.images) if self.subsample_size is None else self.subsample_size
-
-
-if __name__ == "__main__":
-    root = "/home/pandeyk1/datasets/afhqv2/"
-    dataset = AFHQv2Dataset(root)
-    print(len(dataset))

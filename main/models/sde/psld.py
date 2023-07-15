@@ -1,20 +1,21 @@
 import logging
+
 import numpy as np
 import torch
-from .base import SDE
 from util import register_module, reshape
+
+from .base import SDE
 
 logger = logging.getLogger(__name__)
 
 
-@register_module(category="sde", name="es3sde")
-class ES3SDE(SDE):
+@register_module(category="sde", name="psld")
+class PSLD(SDE):
     def __init__(self, config):
-        """Construct a Extended State Space Score (ES3) SDE."""
+        """Construct a Phase-Space Langevin Diffusion (PSLD) SDE."""
         super().__init__(config.model.sde.n_timesteps)
         self.beta_0 = config.model.sde.beta_min
         self.beta_1 = config.model.sde.beta_max
-        self.use_ms = config.model.sde.use_ms
 
         #### SDE Core Parameters ####
         self.nu = config.model.sde.nu
@@ -29,7 +30,7 @@ class ES3SDE(SDE):
         self.mm_0 = self.kappa * self.m
         self.eps = config.model.sde.numerical_eps
         self.decomp_mode = config.model.sde.decomp_mode
-        assert self.decomp_mode in ["lower", "upper"]
+        assert self.decomp_mode == ["lower", "upper"]
 
     def __repr__(self):
         return f"Initialized SDE with m_inv:{self.m_inv}, gamma: {self.gamma}, nu: {self.nu}, Decomp mode: {self.decomp_mode}"
@@ -56,10 +57,10 @@ class ES3SDE(SDE):
 
     @property
     def type(self):
-        return f"es3sde-{self.mode}"
+        return f"psld-{self.mode}"
 
     def _mean(self, x_0, m_0, t):
-        """Returns the mean at time t of the perturbation kernel: p(u_t|u_0)"""
+        """Returns the mean at time t of the perturbation kernel: p(z_t|z_0) (DSM) or p(z_t|x_0) (HSM)"""
         # Scaling factor
         mu_lam = (self.nu + self.gamma) / 4
         b_t = reshape(self.b_t(t), x_0)
@@ -83,9 +84,7 @@ class ES3SDE(SDE):
         return mu
 
     def _cov(self, xx_0, mm_0, t):
-        """Returns the 2 x 2 covariance matrix at time t of the perturbation kernel: p(u_t|u_0).
-        One needs to run `torch.kron` on the output to get the original covariance matrix.
-        Usually xx_0 will be 0 so a lot of the coefficients in the final soln will zero out"""
+        """Returns the 2 x 2 covariance matrix at time t of the perturbation kernel: p(z_t|z_0) (DSM) or p(z_t|x_0) (HSM)"""
         # Scaling factor
         cov_lam = (self.nu + self.gamma) / 2
         b_t = self.b_t(t)
@@ -153,6 +152,9 @@ class ES3SDE(SDE):
         return xx_t + self.eps, xm_t, mm_t + self.eps
 
     def get_coeff(self, var):
+        """Returns the scalar coefficients for the matrix decomposition of the
+        covariance of the perturbation kernel
+        """
         xx_t, xm_t, mm_t = var
         if self.decomp_mode == "lower":
             # Cholesky decomposition
@@ -184,6 +186,9 @@ class ES3SDE(SDE):
         return u11, u12, u21, u22
 
     def get_inv_coeff(self, var):
+        """Returns the scalar coefficients for the inverse-transpose of the
+        matrix decomposition of the covariance of the perturbation kernel
+        """
         xx_t, xm_t, mm_t = var
         if self.decomp_mode == "lower":
             # Compute L_t^{-T} (Cholesky transpose inv)
@@ -215,51 +220,31 @@ class ES3SDE(SDE):
         return ui11, ui12, ui21, ui22
 
     def cond_marginal_prob(self, x_0, m_0, xx_0, mm_0, t):
-        """Returns mean and variance of the perturbation kernel p(x_t|x_0)"""
+        """Returns mean and variance of the perturbation kernel"""
         mu_t = self._mean(x_0, m_0, t)
         assert mu_t.shape == torch.cat([x_0, m_0], dim=1).shape
 
         xx_t, xm_t, mm_t = self._cov(xx_0, mm_0, t)
         return mu_t, (xx_t, xm_t, mm_t)
 
-    def get_ms(self, u_t, var):
-        x_t, m_t = torch.chunk(u_t, 2, dim=1)
-        _, _, mm_t = var
-
-        # Get factorization coeffs
-        l11, l12, l21, l22 = self.get_coeff(var)
-
-        s_x = x_t / reshape(mm_t, x_t)
-        s_m = m_t / reshape(mm_t, m_t)
-
-        # Compute L_t^T * s
-        ms_x = reshape(l11, x_t) * s_x + reshape(l21, m_t) * s_m
-        ms_m = reshape(l12, x_t) * s_x + reshape(l22, m_t) * s_m
-        return torch.cat([ms_x, ms_m], dim=1)
-
-    def get_score(self, u_t, xx_0, mm_0, eps, t):
-        """Returns the score of the perturbation kernel given eps (predicted or just noise)"""
-        x_t, m_t = torch.chunk(u_t, 2, dim=1)
+    def get_score(self, xx_0, mm_0, eps, t):
+        """Returns the score given epsilon (predicted or just randomly sampled)"""
         var = self._cov(xx_0, mm_0, t)
 
         # Compute L_t^{-T} (Get transpose inv)
         c11, c12, c21, c22 = self.get_inv_coeff(var)
 
-        ms_m = torch.zeros_like(m_t)
-        ms_x = torch.zeros_like(x_t)
-        if self.use_ms:
-            ms_x = x_t / reshape(var[2], x_t)
-            ms_m = m_t / reshape(var[2], m_t)
-
-        # Score = -L_t^{-T} \epsilon
+        # Score = -L_t^{-T} \epsilon. If the noise is explicitly added in only
+        # in the position or the momentum space, the score in the other
+        # dimension is explicitly set to 0 (since it wont be used during sampling).
         if self.decomp_mode == "lower" and self.mode == "score_m":
             score_x = torch.zeros_like(eps)
-            score_m = -reshape(c22, eps).type(torch.float32) * eps - ms_m
+            score_m = -reshape(c22, eps).type(torch.float32) * eps
             return torch.cat([score_x, score_m], dim=1)
 
         if self.decomp_mode == "upper" and self.mode == "score_x":
             score_m = torch.zeros_like(eps)
-            score_x = -reshape(c11, eps).type(torch.float32) * eps - ms_x
+            score_x = -reshape(c11, eps).type(torch.float32) * eps
             return torch.cat([score_x, score_m], dim=1)
 
         # Case when both epsilons need to be computed
@@ -267,11 +252,11 @@ class ES3SDE(SDE):
         score_x = (
             -reshape(c11, eps_x).type(torch.float32) * eps_x
             - reshape(c12, eps_m).type(torch.float32) * eps_m
-        ) - ms_x
+        )
         score_m = (
             -reshape(c21, eps_x).type(torch.float32) * eps_x
             - reshape(c22, eps_m).type(torch.float32) * eps_m
-        ) - ms_m
+        )
         return torch.cat([score_x, score_m], dim=1)
 
     def perturb_data(self, x_0, m_0, xx_0, mm_0, t, eps=None):
@@ -301,7 +286,10 @@ class ES3SDE(SDE):
             return u_t, eps, mu_t, var
         return u_t, mu_t, var
 
-    def predict_x_from_eps(self, u_t, eps, t):
+    def predict_x_from_eps(self, z_t, eps, t):
+        """Predicts the original (x_0, m_0) pair given a noisy state and
+        the predicted or randomly sampled epsilon.
+        """
         var = self._cov(0.0, self.mm_0, t)
         l11, l12, l21, l22 = self.get_coeff(var)
 
@@ -310,9 +298,9 @@ class ES3SDE(SDE):
         scaled_eps_m = l21 * eps_x + l22 * eps_m
 
         # Predict mean
-        u_x, u_m = torch.chunk(u_t, 2, dim=1)
-        mu_x = u_x - scaled_eps_x
-        mu_m = u_m - scaled_eps_m
+        z_x, z_m = torch.chunk(z_t, 2, dim=1)
+        mu_x = z_x - scaled_eps_x
+        mu_m = z_m - scaled_eps_m
 
         # Predict reconstruction
         mu_lam = (self.nu + self.gamma) / 4
@@ -323,52 +311,27 @@ class ES3SDE(SDE):
         C_1 = -0.5
         C_2 = (self.gamma - self.nu) / 4
 
-        C = torch.tensor([[A_1 * b_t + 1, A_2 * b_t], [C_1 * b_t, C_2 * b_t + 1]], device=u_t.device)
+        C = torch.tensor(
+            [[A_1 * b_t + 1, A_2 * b_t], [C_1 * b_t, C_2 * b_t + 1]], device=z_t.device
+        )
         C_inv = torch.linalg.inv(C)
         C_inv_sc = C_inv * scaling_factor
-        c11, c12, c21, c22 = C_inv_sc[0, 0], C_inv_sc[0, 1], C_inv_sc[1, 0], C_inv_sc[1, 1]
+        c11, c12, c21, c22 = (
+            C_inv_sc[0, 0],
+            C_inv_sc[0, 1],
+            C_inv_sc[1, 0],
+            C_inv_sc[1, 1],
+        )
 
         x_recons = c11 * mu_x + c12 * mu_m
         m_recons = c21 * mu_x + c22 * mu_m
-
         return x_recons, m_recons
-
-    def clip_and_predict_eps(self, z, eps, t):
-        # Predict reconstruction
-        x_recons, m_recons = self.predict_x_from_eps(z, eps, t)
-        x_recons = x_recons.clip(-1.0, 1.0)
-        m_recons = torch.zeros_like(x_recons)
-
-        # Compute eps_pred with new reconstruction
-        mu_lam = (self.nu + self.gamma) / 4
-        b_t = self.b_t(t)
-        scaling_factor = torch.exp(-mu_lam * b_t)
-        A_1 = (self.nu - self.gamma) / 4
-        A_2 = (self.gamma - self.nu) ** 2 / 8
-        C_1 = -0.5
-        C_2 = (self.gamma - self.nu) / 4
-
-        S_t = torch.tensor([[A_1 * b_t + 1, A_2 * b_t], [C_1 * b_t, C_2 * b_t + 1]], device=z.device) * scaling_factor
-        s11, s12, s21, s22 = S_t[0,0], S_t[0,1], S_t[1,0], S_t[1,1]
-        sr_x = s11 * x_recons + s12 * m_recons
-        sr_m = s21 * x_recons + s22 * m_recons
-        sr = torch.cat([sr_x, sr_m], dim=1)
-
-        diff = z - sr
-        diff_x, diff_m = torch.chunk(diff, 2, dim=1)
-        var_t = self._cov(0, self.mm_0, t)
-        li11, li12, li21, li22 = self.get_inv_coeff(var_t)
-        s_eps_x = li11 * diff_x + li21 * diff_m
-        s_eps_m = li12 * diff_x + li22 * diff_m
-
-        return s_eps_x, s_eps_m
 
     def sde(self, u_t, t):
         """Return the drift and diffusion coefficients"""
         x_t, m_t = torch.chunk(u_t, 2, dim=1)
 
         beta_t = reshape(self.beta_t(t), x_t)
-        # beta_t = self.beta_t(t)
 
         drift_x = 0.5 * beta_t * (self.m_inv * m_t - self.gamma * x_t)
         drift_v = 0.5 * beta_t * (-self.nu * m_t - x_t)
@@ -379,7 +342,7 @@ class ES3SDE(SDE):
             (diffusion_x, diffusion_v), dim=1
         )
 
-    def reverse_sde(self, u_t, t, score_fn, probability_flow=False, clip=False):
+    def reverse_sde(self, u_t, t, score_fn, probability_flow=False):
         """Return the drift and diffusion coefficients of the reverse sde"""
         # The reverse SDE is defines on the domain (T-t)
         t = self.T - t
@@ -389,9 +352,6 @@ class ES3SDE(SDE):
 
         # scale the score by 0.5 for the prob. flow formulation
         eps_pred = score_fn(u_t.type(torch.float32), t.type(torch.float32))
-        if clip:
-            eps_x, eps_m = self.clip_and_predict_eps(u_t, eps_pred, t[0])
-            eps_pred = torch.cat([eps_x, eps_m], dim=1)
         score = self.get_score(u_t, 0, self.mm_0, eps_pred, t)
         score = 0.5 * score if probability_flow else score
 

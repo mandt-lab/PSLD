@@ -1,7 +1,8 @@
 import numpy as np
 import torch
-from .base import SDE
 from util import register_module, reshape
+
+from .base import SDE
 
 
 @register_module(category="sde", name="vpsde")
@@ -12,9 +13,6 @@ class VPSDE(SDE):
         self.beta_0 = config.model.sde.beta_min
         self.beta_1 = config.model.sde.beta_max
 
-        # BUG: Cant use lambda here due to pickling issues in multi-GPU inference
-        # self.beta_t = lambda t: self.beta_0 + t * (self.beta_1 - self.beta_0)
-
     def beta_t(self, t):
         return self.beta_0 + t * (self.beta_1 - self.beta_0)
 
@@ -24,7 +22,7 @@ class VPSDE(SDE):
 
     @property
     def type(self):
-        return 'vpsde'
+        return "vpsde"
 
     def get_score(self, eps, t):
         return -eps / reshape(self._std(t), eps)

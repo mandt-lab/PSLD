@@ -3,13 +3,12 @@ import os
 
 import hydra
 import pytorch_lightning as pl
+from models.clf_wrapper import TClfWrapper
 from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.seed import seed_everything
 from torch.utils.data import DataLoader
-
-from models.clf_wrapper import TClfWrapper
 from util import get_dataset, get_module, import_modules_into_registry
 
 logger = logging.getLogger(__name__)
@@ -20,7 +19,8 @@ import_modules_into_registry()
 
 
 @hydra.main(config_path="configs")
-def train(config):
+def train_clf(config):
+    """Helper script for training a noise conditioned classifier for guidance purposes"""
     # Get config and setup
     config = config.dataset
     logger.info(OmegaConf.to_yaml(config))
@@ -110,4 +110,4 @@ def train(config):
 
 
 if __name__ == "__main__":
-    train()
+    train_clf()

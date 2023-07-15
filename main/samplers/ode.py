@@ -1,18 +1,22 @@
 import torch
-
 from torchdiffeq import odeint
-from .base import Sampler
 from util import register_module
+
+from .base import Sampler
 
 
 @register_module(category="samplers", name="bb_ode")
 class BBODESampler(Sampler):
+    """Black-Box ODE sampler for generating samples from the
+    Probability Flow ODE.
+    """
+
     def __init__(self, config, sde, score_fn, corrector_fn=None):
         super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
         self.nfe = 0
         self.rtol = config.evaluation.sampler.rtol
         self.atol = config.evaluation.sampler.atol
-        self.solver_opts = {'solver': config.evaluation.sampler.solver}
+        self.solver_opts = {"solver": config.evaluation.sampler.solver}
 
         self._counter = 0
 
@@ -24,7 +28,7 @@ class BBODESampler(Sampler):
     def mean_nfe(self):
         if self._counter != 0:
             return self.nfe / self._counter
-        raise ValueError('Run .sample() to compute mean_nfe')
+        raise ValueError("Run .sample() to compute mean_nfe")
 
     def predictor_update_fn(self, x, t, dt):
         pass
@@ -54,7 +58,7 @@ class BBODESampler(Sampler):
             time_tensor,
             rtol=self.rtol,
             atol=self.atol,
-            method='scipy_solver',
+            method="scipy_solver",
             options=self.solver_opts,
         )
 
@@ -62,6 +66,11 @@ class BBODESampler(Sampler):
 
         # Denoise
         if denoise:
-            x = self.denoise_fn(x, torch.ones(x.shape[0], device=x.device, dtype=torch.float64) * (self.sde.T - eps), eps)
+            x = self.denoise_fn(
+                x,
+                torch.ones(x.shape[0], device=x.device, dtype=torch.float64)
+                * (self.sde.T - eps),
+                eps,
+            )
             self.nfe += 1
         return x

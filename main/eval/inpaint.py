@@ -1,9 +1,8 @@
-# Helper script to sample from an unconditional DDPM model
-# Add project directory to sys.path
 import logging
 import os
 import sys
 
+# Add project directory to sys.path
 p = os.path.join(os.path.abspath("."), "main")
 sys.path.insert(1, p)
 
@@ -17,7 +16,7 @@ from models.wrapper import SDEWrapper
 from omegaconf import OmegaConf
 from pytorch_lightning.utilities.seed import seed_everything
 from torch.utils.data import DataLoader
-from util import get_module, import_modules_into_registry, get_dataset
+from util import get_dataset, get_module, import_modules_into_registry
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +26,15 @@ import_modules_into_registry()
 
 
 @hydra.main(config_path=os.path.join(p, "configs"))
-def sample(config):
+def inpaint(config):
+    """Evaluation script for inpainting with pre-trained score models using guidance."""
     config = config.dataset.diffusion
     logger.info(OmegaConf.to_yaml(config))
 
     # Set seed
     seed_everything(config.evaluation.seed)
 
-    # Setup score predictor
+    # Setup Score Predictor
     score_fn_cls = get_module(category="score_fn", name=config.model.score_fn.name)
     score_fn = score_fn_cls(config)
     logger.info(f"Using Score fn: {score_fn_cls}")
@@ -95,8 +95,7 @@ def sample(config):
     # Setup Image writer callback trainer
     write_callback = InpaintingImageWriter(
         config.evaluation.save_path,
-        "batch",
-        eval_mode="sample",
+        write_interval="batch",
         sample_prefix=config.evaluation.sample_prefix,
         path_prefix=config.evaluation.path_prefix,
         save_mode=config.evaluation.save_mode,
@@ -106,9 +105,11 @@ def sample(config):
 
     test_kwargs["callbacks"] = [write_callback]
     test_kwargs["default_root_dir"] = config.evaluation.save_path
+
+    # Setup Pl module and predict
     sampler = pl.Trainer(**test_kwargs)
     sampler.predict(wrapper, val_loader)
 
 
 if __name__ == "__main__":
-    sample()
+    inpaint()

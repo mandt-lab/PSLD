@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 @register_module(category="pl_modules", name="sde_wrapper")
 class SDEWrapper(pl.LightningModule):
+    """This PL module can do the following tasks:
+    - train: Train an unconditional score model using HSM or DSM
+    - predict: Generate unconditional samples from a pre-trained score model
+    """
+
     def __init__(
         self,
         config,

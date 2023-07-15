@@ -10,8 +10,7 @@ class Sampler(abc.ABC):
         self.sde = sde
         self.score_fn = score_fn
         self.corrector_fn = corrector_fn
-        self.clip = self.config.evaluation.sampler.clip
-    
+
     @property
     def n_steps(self):
         return self.config.evaluation.n_discrete_steps

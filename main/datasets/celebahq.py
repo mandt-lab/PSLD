@@ -1,13 +1,13 @@
 import os
 
-import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from util import register_module
+from util import data_scaler, register_module
 
 
+# NOTE: We dont use this dataset in the paper
 @register_module(category="datasets", name='celebahq256')
 class CelebAHQDataset(Dataset):
     def __init__(self, root, norm=True, subsample_size=None, transform=None, **kwargs):
@@ -38,10 +38,8 @@ class CelebAHQDataset(Dataset):
         if self.transform is not None:
             img = self.transform(img)
 
-        if self.norm:
-            img = (np.asarray(img).astype(np.float) / 127.5) - 1.0
-        else:
-            img = np.asarray(img).astype(np.float) / 255.0
+        # Normalize
+        img = data_scaler(img, norm=self.norm)
 
         return torch.from_numpy(img).permute(2, 0, 1).float()
 

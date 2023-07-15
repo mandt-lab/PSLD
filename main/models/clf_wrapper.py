@@ -1,5 +1,4 @@
 import logging
-from re import X
 
 import pytorch_lightning as pl
 import torch
@@ -9,9 +8,13 @@ from util import get_module, register_module
 logger = logging.getLogger(__name__)
 
 
-# PL module to generate class conditional samples from pretrained score models
 @register_module(category="pl_modules", name="tclf_wrapper")
 class TClfWrapper(pl.LightningModule):
+    """This PL module can do the following tasks:
+    - train: Train a classifier to predict labels given a noisy state z_t
+    - predict: Generate class-conditional samples using classifier guidance
+    """
+
     def __init__(
         self,
         config,
@@ -68,7 +71,7 @@ class TClfWrapper(pl.LightningModule):
         loss, acc = self.criterion(x_0, y, t, self.clf_fn)
 
         self.log("loss", loss, prog_bar=True)
-        self.log('Top1-Acc', acc, prog_bar=True)
+        self.log("Top1-Acc", acc, prog_bar=True)
         return loss
 
     def on_predict_start(self):

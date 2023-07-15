@@ -1,13 +1,15 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-
 from util import register_module, reshape
+
 from .base import Sampler
 
 
 @register_module(category="samplers", name="em_sde")
 class EulerMaruyamaSampler(Sampler):
+    """Implementation for the Euler-Maruyama Sampler"""
+
     def __init__(self, config, sde, score_fn, corrector_fn=None):
         super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
 
@@ -17,7 +19,6 @@ class EulerMaruyamaSampler(Sampler):
             t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
             self.score_fn,
             probability_flow=False,
-            clip=self.clip
         )
         x_mean = x + f * dt
         noise = g * torch.sqrt(dt) * torch.randn_like(x)
@@ -59,6 +60,10 @@ class EulerMaruyamaSampler(Sampler):
 
 @register_module(category="samplers", name="cc_em_sde")
 class ClassCondEulerMaruyamaSampler(Sampler):
+    """Implementation for the Euler-Maruyama Sampler for class-conditional
+    sampling using guidance
+    """
+
     def __init__(self, config, sde, score_fn, clf_fn, corrector_fn=None):
         super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
         self.clf_fn = clf_fn
@@ -77,13 +82,16 @@ class ClassCondEulerMaruyamaSampler(Sampler):
         # Classifier prediction and guidance gradient
         with torch.inference_mode(False):
             x_in = x.clone().requires_grad_()
-            logits = self.clf_fn(x_in.type(torch.float32), t * torch.ones(x.shape[0], device=x.device, dtype=torch.float32))
+            logits = self.clf_fn(
+                x_in.type(torch.float32),
+                t * torch.ones(x.shape[0], device=x.device, dtype=torch.float32),
+            )
             log_probs = F.log_softmax(logits, dim=-1)
             selected = log_probs[range(len(logits)), self.y]
             grad = torch.autograd.grad(selected.sum(), x_in)[0] * self.clf_temp
 
         # Guide
-        f = f + (g ** 2) * grad
+        f = f + (g**2) * grad
 
         # Sampler step
         x_mean = x + f * dt
@@ -116,6 +124,10 @@ class ClassCondEulerMaruyamaSampler(Sampler):
 
 @register_module(category="samplers", name="ip_em_sde")
 class ES3EulerMaruyamaInpainter(Sampler):
+    """Implementation for the Euler-Maruyama Sampler for image inpainting
+    using guidance.
+    """
+
     def __init__(self, config, sde, score_fn, corrector_fn=None):
         super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
 
@@ -129,12 +141,12 @@ class ES3EulerMaruyamaInpainter(Sampler):
             m_0 = torch.zeros_like(x_0)
             mm_0 = self.sde.mm_0
 
-        u_0 = torch.cat([x_0, m_0], dim=1)
+        z_0 = torch.cat([x_0, m_0], dim=1)
         xx_0 = 0
-        eps = torch.randn_like(u_0)
+        eps = torch.randn_like(z_0)
 
-        u_t, mu_t, _ = self.sde.perturb_data(x_0, m_0, xx_0, mm_0, t, eps=eps)
-        return u_t, mu_t
+        z_t, mu_t, _ = self.sde.perturb_data(x_0, m_0, xx_0, mm_0, t, eps=eps)
+        return z_t, mu_t
 
     def predictor_update_fn(self, x, t, dt):
         # Drift and diffusion coefficients
@@ -149,7 +161,6 @@ class ES3EulerMaruyamaInpainter(Sampler):
         x_mean = x + f * dt
         noise = g * torch.sqrt(dt) * torch.randn_like(x)
         x = x_mean + noise
-
         return x, x_mean
 
     def inpaint_update_fn(self, x, t, dt, mask, x_0, update_fn):
@@ -158,7 +169,11 @@ class ES3EulerMaruyamaInpainter(Sampler):
 
         # Split-Perturb-Combine
         x_c, m_c = torch.chunk(x, 2, dim=1)
-        u_k, mu_k = self._perturb(x_0, (self.sde.T - t) * torch.ones(x.shape[0], device=x.device, dtype=torch.float64))
+        u_k, mu_k = self._perturb(
+            x_0,
+            (self.sde.T - t)
+            * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
+        )
         x_k, m_k = torch.chunk(u_k, 2, dim=1)
         x_c = x_c * (1 - mask) + x_k * mask
         m_c = m_c * (1 - mask) + m_k * mask
@@ -178,7 +193,10 @@ class ES3EulerMaruyamaInpainter(Sampler):
         # Initial latent
         x = self.sde.prior_sampling(x_0.shape).to(ts.device)
         x_c, m_c = torch.chunk(x, 2, dim=1)
-        u_k, _ = self._perturb(x_0, self.sde.T * torch.ones(x.shape[0], device=x.device, dtype=torch.float64))
+        u_k, _ = self._perturb(
+            x_0,
+            self.sde.T * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
+        )
         x_k, m_k = torch.chunk(u_k, 2, dim=1)
         x_c = x_c * (1 - mask) + x_k * mask
         m_c = m_c * (1 - mask) + m_k * mask
@@ -190,10 +208,9 @@ class ES3EulerMaruyamaInpainter(Sampler):
                 dt = reshape(ts[t_idx + 1] - ts[t_idx], x)
 
                 # Predictor step
-                x, _ = self.inpaint_update_fn(x, ts[t_idx], dt, mask, x_0, self.predictor_update_fn)
-
-                # Corrector_step
-                # x, _ = self.inpaint_update_fn(x, ts[t_idx], dt, mask, x_0, self.corrector_update_fn)
+                x, _ = self.inpaint_update_fn(
+                    x, ts[t_idx], dt, mask, x_0, self.predictor_update_fn
+                )
 
             if denoise:
                 _, x = self.inpaint_update_fn(
@@ -202,14 +219,17 @@ class ES3EulerMaruyamaInpainter(Sampler):
                     reshape(torch.tensor(eps, device=x.device), x),
                     mask,
                     x_0,
-                    self.predictor_update_fn
+                    self.predictor_update_fn,
                 )
-
         return x
 
 
 @register_module(category="samplers", name="sscs_sde")
 class SSCSSampler(Sampler):
+    """Implementation for the Symmetric-Splitting CLD Sampler for PSLD.
+    Adapted from https://github.com/nv-tlabs/CLD-SGM/blob/main/sampling.py#L140
+    """
+
     def __init__(self, config, sde, score_fn, corrector_fn=None):
         super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
 
@@ -307,61 +327,6 @@ class SSCSSampler(Sampler):
             score_m + self.sde.m_inv * m
         )
         return torch.cat((x_bar, m_bar), dim=1)
-
-    def predictor_update_fn(self, u, t, dt):
-        t = t * torch.ones(u.shape[0], device=u.device, dtype=torch.float64)
-        u = self.analytical_dynamics(u, t, dt / 2)
-        u = self.euler_score_dynamics(u, t, dt)
-        u = self.analytical_dynamics(u, t, dt / 2)
-        return u
-
-    def denoising_fn(self, x, t, dt):
-        f, g = self.sde.reverse_sde(
-            x,
-            t * torch.ones(x.shape[0], device=x.device, dtype=torch.float64),
-            self.score_fn,
-            probability_flow=False,
-        )
-        x_mean = x + f * dt
-        noise = g * torch.sqrt(dt) * torch.randn_like(x)
-        x = x_mean + noise
-        return x_mean
-
-    def sample(self, batch, ts, n_discrete_steps, denoise=True, eps=1e-3):
-        x = batch
-        self.nfe = n_discrete_steps
-
-        # Sample
-        with torch.no_grad():
-            for t_idx in range(n_discrete_steps):
-                dt = ts[t_idx + 1] - ts[t_idx]
-                # Predictor step
-                x = self.predictor_update_fn(x, ts[t_idx], dt)
-
-                # Corrector_step
-                x, _ = self.corrector_update_fn(x, ts[t_idx], dt)
-
-            if denoise:
-                x = self.denoising_fn(
-                    x,
-                    torch.tensor(self.sde.T - eps, device=x.device),
-                    reshape(torch.tensor(eps, device=x.device), x),
-                )
-        return x
-
-
-@register_module(category="samplers", name="msscs_sde")
-class ModifiedSSCSSampler(Sampler):
-    """Sampler based on an alternate splitting scheme
-    """
-    def __init__(self, config, sde, score_fn, corrector_fn=None):
-        super().__init__(config, sde, score_fn, corrector_fn=corrector_fn)
-
-    def analytical_dynamics(self, u, t, dt):
-        pass
-
-    def euler_score_dynamics(self, u, t, dt):
-        pass
 
     def predictor_update_fn(self, u, t, dt):
         t = t * torch.ones(u.shape[0], device=u.device, dtype=torch.float64)

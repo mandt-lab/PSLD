@@ -37,7 +37,7 @@ class EMAWeightUpdate(Callback):
         """
         super().__init__()
         self.tau = tau
-        logger.info(f'Setup EMA callback with tau: {self.tau}')
+        logger.info(f"Setup EMA callback with tau: {self.tau}")
 
     def on_train_batch_end(
         self,
@@ -65,29 +65,25 @@ class EMAWeightUpdate(Callback):
 
 # TODO: Add Support for saving momentum states
 class SimpleImageWriter(BasePredictionWriter):
+    """Pytorch Lightning Callback for writing a batch of images to disk."""
+
     def __init__(
         self,
         output_dir,
         write_interval,
-        eval_mode="sample",
         sample_prefix="",
         path_prefix="",
         save_mode="image",
         is_norm=True,
         is_augmented=True,
-        save_batch=False,
-        conditional=False
     ):
         super().__init__(write_interval)
-        assert eval_mode in ["sample", "recons"]
         self.output_dir = output_dir
-        self.eval_mode = eval_mode
         self.sample_prefix = sample_prefix
         self.path_prefix = path_prefix
         self.is_norm = is_norm
         self.is_augmented = is_augmented
         self.save_fn = save_as_images if save_mode == "image" else save_as_np
-        self.save_batch = save_batch
 
     def write_on_batch_end(
         self,
@@ -106,10 +102,11 @@ class SimpleImageWriter(BasePredictionWriter):
         # processes from overwriting images
         samples = prediction.cpu()
 
+        # Ignore momentum states if the SDE is augmented
         if self.is_augmented:
             samples, _ = torch.chunk(samples, 2, dim=1)
 
-        # Setup dirs
+        # Setup save dirs
         if self.path_prefix != "":
             base_save_path = os.path.join(self.output_dir, str(self.path_prefix))
         else:
@@ -126,21 +123,12 @@ class SimpleImageWriter(BasePredictionWriter):
             denorm=self.is_norm,
         )
 
-        # Save batch
-        if self.save_batch:
-            batch_save_path = os.path.join(base_save_path, "batch")
-            os.makedirs(batch_save_path, exist_ok=True)
-            img = batch
-            self.save_fn(
-                img,
-                file_name=os.path.join(
-                    batch_save_path, f"output_{self.sample_prefix }_{rank}_{batch_idx}"
-                ),
-                denorm=self.is_norm,
-            )
-
 
 class InpaintingImageWriter(BasePredictionWriter):
+    """Pytorch Lightning Callback for writing a batch of images to disk.
+    Specifically adapted for Image inpainting.
+    """
+
     def __init__(
         self,
         output_dir,
@@ -152,7 +140,7 @@ class InpaintingImageWriter(BasePredictionWriter):
         is_norm=True,
         is_augmented=True,
         save_batch=False,
-        conditional=False
+        conditional=False,
     ):
         super().__init__(write_interval)
         assert eval_mode in ["sample", "recons"]

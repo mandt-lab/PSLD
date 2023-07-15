@@ -1,9 +1,8 @@
-# Helper script to sample from an unconditional DDPM model
-# Add project directory to sys.path
 import logging
 import os
 import sys
 
+# Add project directory to sys.path
 p = os.path.join(os.path.abspath("."), "main")
 sys.path.insert(1, p)
 
@@ -28,6 +27,7 @@ import_modules_into_registry()
 
 @hydra.main(config_path=os.path.join(p, "configs"))
 def sample(config):
+    """Evaluation script for Unconditional sampling using pre-trained score models"""
     config = config.dataset.diffusion
     logger.info(OmegaConf.to_yaml(config))
 
@@ -94,17 +94,17 @@ def sample(config):
     # Setup Image writer callback trainer
     write_callback = SimpleImageWriter(
         config.evaluation.save_path,
-        "batch",
-        eval_mode="sample",
-        conditional=False,
+        write_interval="batch",
         sample_prefix=config.evaluation.sample_prefix,
         path_prefix=config.evaluation.path_prefix,
         save_mode=config.evaluation.save_mode,
-        is_augmented=config.model.sde.is_augmented
+        is_augmented=config.model.sde.is_augmented,
     )
 
     test_kwargs["callbacks"] = [write_callback]
     test_kwargs["default_root_dir"] = config.evaluation.save_path
+
+    # Setup Pl module and predict
     sampler = pl.Trainer(**test_kwargs)
     sampler.predict(wrapper, val_loader)
 

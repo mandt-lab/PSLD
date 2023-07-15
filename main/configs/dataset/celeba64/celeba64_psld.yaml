@@ -6,8 +6,6 @@ diffusion:
     hflip: True
     num_channels: 3
     norm: True
-    apply_cond: False
-    cond_size: 32
 
   model:
     pl_module: 'sde_wrapper'
@@ -33,13 +31,10 @@ diffusion:
       embedding_type: "positional"
       init_scale: 0.0
       fourier_scale: 16
-      # scale_by_sigma: False  (The Unet always predicts epsilon)
-      # n_heads: 1
     sde:
-      name: "es3sde"
+      name: "psld"
       beta_min: 8.0
       beta_max: 8.0
-      # beta: 8.0
       nu: 1
       gamma: 2
       kappa: 0.04
@@ -47,15 +42,13 @@ diffusion:
       numerical_eps: 1e-9
       n_timesteps: 1000
       is_augmented: True
-      use_ms: False
 
   training:
     seed: 0
     continuous: True
     mode: 'hsm'
-    use_ms: False
     loss:
-      name: "es3_score_loss"
+      name: "psld_score_loss"
       l_type: "l2"
       reduce_mean: True
       weighting: "fid"
@@ -84,7 +77,6 @@ diffusion:
     chkpt_prefix: ""
 
   evaluation:
-    # Sampler specific config goes here
     sampler:
       name: em_sde
     seed: 0
@@ -104,34 +96,3 @@ diffusion:
     save_mode: image
     sample_prefix: "gpu"
     path_prefix: ""
-
-# VAE config used for VAE training
-vae:
-  data:
-    root: ???
-    name: "cifar10"
-    image_size: 32
-    n_channels: 3
-    hflip: False
-
-  model:
-    enc_block_config : "32x7,32d2,32t16,16x4,16d2,16t8,8x4,8d2,8t4,4x3,4d4,4t1,1x3"
-    enc_channel_config: "32:64,16:128,8:256,4:256,1:512"
-    dec_block_config: "1x1,1u4,1t4,4x2,4u2,4t8,8x3,8u2,8t16,16x7,16u2,16t32,32x15"
-    dec_channel_config: "32:64,16:128,8:256,4:256,1:512"
-
-  training:
-    seed: 0
-    fp16: False
-    batch_size: 128
-    epochs: 1000
-    log_step: 1
-    device: "gpu:0"
-    chkpt_interval: 1
-    optimizer: "Adam"
-    lr: 1e-4
-    restore_path: ""
-    results_dir: ???
-    workers: 2
-    chkpt_prefix: ""
-    alpha: 1.0

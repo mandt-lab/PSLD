@@ -1,17 +1,14 @@
-# Helper script to sample from an unconditional DDPM model
-# Add project directory to sys.path
 import logging
 import os
 import sys
-
 from copy import deepcopy
 
+# Add project directory to sys.path
 p = os.path.join(os.path.abspath("."), "main")
 sys.path.insert(1, p)
 
 import hydra
 import pytorch_lightning as pl
-import torch
 from callbacks import SimpleImageWriter
 from datasets.latent import SDELatentDataset
 from models.clf_wrapper import TClfWrapper
@@ -29,7 +26,10 @@ import_modules_into_registry()
 
 
 @hydra.main(config_path=os.path.join(p, "configs"))
-def sample(config):
+def cc_sample(config):
+    """Evaluation script for Class conditional sampling with pre-trained score models 
+    using classifier guidance.
+    """
     config = config.dataset
     config_sde = config.diffusion
     config_clf = config.clf
@@ -61,20 +61,26 @@ def sample(config):
         sampler_cls=None,
     )
 
-    score_fn = wrapper.ema_score_fn if config_sde.evaluation.sample_from == 'target' else wrapper.score_fn
+    score_fn = (
+        wrapper.ema_score_fn
+        if config_sde.evaluation.sample_from == "target"
+        else wrapper.score_fn
+    )
     score_fn.eval()
 
     # Setup sampler
-    # Only class conditional (cc) samplers allowed
-    assert config_sde.evaluation.sampler.name.startswith('cc')
-    sampler_cls = get_module(category="samplers", name=config_sde.evaluation.sampler.name)
-    logger.info(f"Using Sampler: {sampler_cls}")
+    sampler_cls = get_module(
+        category="samplers", name=config_sde.evaluation.sampler.name
+    )
+    logger.info(
+        f"Using Sampler: {sampler_cls}. Make sure the sampler supports Class-conditional sampling"
+    )
 
     # Setup dataset
     dataset = SDELatentDataset(sde, config_sde)
     logger.info(f"Using Dataset: {dataset} with size: {len(dataset)}")
 
-    # Setup classifier
+    # Setup classifier (for guidance)
     clf_fn_cls = get_module(category="clf_fn", name=config_clf.model.clf_fn.name)
     clf_fn = clf_fn_cls(config_clf)
     logger.info(f"Using Classifier fn: {clf_fn_cls}")
@@ -86,7 +92,7 @@ def sample(config):
         clf_fn=clf_fn,
         score_fn=score_fn,
         sampler_cls=sampler_cls,
-        strict=False
+        strict=False,
     )
     wrapper.eval()
 
@@ -116,20 +122,20 @@ def sample(config):
     # Setup Image writer callback trainer
     write_callback = SimpleImageWriter(
         config_sde.evaluation.save_path,
-        "batch",
-        eval_mode="sample",
-        conditional=False,
+        write_interval="batch",
         sample_prefix=config_sde.evaluation.sample_prefix,
         path_prefix=config_sde.evaluation.path_prefix,
         save_mode=config_sde.evaluation.save_mode,
-        is_augmented=config_sde.model.sde.is_augmented
+        is_augmented=config_sde.model.sde.is_augmented,
     )
 
     test_kwargs["callbacks"] = [write_callback]
     test_kwargs["default_root_dir"] = config_sde.evaluation.save_path
+
+    # Setup Pl module and predict
     sampler = pl.Trainer(**test_kwargs)
     sampler.predict(wrapper, val_loader)
 
 
 if __name__ == "__main__":
-    sample()
+    cc_sample()

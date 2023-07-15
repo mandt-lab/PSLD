@@ -4,14 +4,11 @@ from copy import deepcopy
 
 import hydra
 import pytorch_lightning as pl
+from callbacks import EMAWeightUpdate
 from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.seed import seed_everything
 from torch.utils.data import DataLoader
-
-from callbacks import EMAWeightUpdate
-from models.wrapper import SDEWrapper
 from util import get_dataset, get_module, import_modules_into_registry
 
 logger = logging.getLogger(__name__)
@@ -23,6 +20,7 @@ import_modules_into_registry()
 
 @hydra.main(config_path="configs")
 def train(config):
+    """Helper script for training a score-based generative model"""
     # Get config and setup
     config = config.dataset.diffusion
     logger.info(OmegaConf.to_yaml(config))
@@ -56,7 +54,7 @@ def train(config):
     logger.info(f"Using Loss: {criterion_cls}")
 
     # Setup Lightning Wrapper Module
-    wrapper_cls = get_module(category='pl_modules', name=config.model.pl_module)
+    wrapper_cls = get_module(category="pl_modules", name=config.model.pl_module)
     wrapper = wrapper_cls(
         config, sde, score_fn, ema_score_fn=ema_score_fn, criterion=criterion
     )
@@ -113,7 +111,7 @@ def train(config):
 
     # Trainer
     logger.info(f"Running Trainer with kwargs: {train_kwargs}")
-    trainer = pl.Trainer(**train_kwargs, strategy='ddp')
+    trainer = pl.Trainer(**train_kwargs, strategy="ddp")
 
     # Restore checkpoint
     restore_path = config.training.restore_path

@@ -1,6 +1,5 @@
 import logging
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision.transforms as T
@@ -12,7 +11,9 @@ _MODULES = {}
 
 
 def reshape(t, rt):
-    # Adds additional dimensions corresponding to the size of the reference tensor rt
+    """Adds additional dimensions corresponding to the size of the
+    reference tensor rt.
+    """
     if len(rt.shape) == len(t.shape):
         return t
     ones = [1] * len(rt.shape[1:])
@@ -76,30 +77,6 @@ def configure_device(device):
     return device
 
 
-def space_timesteps(num_timesteps, desired_count, type="uniform"):
-    """
-    Create a list of timesteps to use from an original diffusion process,
-    given the number of timesteps we want to take from equally-sized portions
-    of the original process.
-    :param num_timesteps: the number of diffusion steps in the original
-                          process to divide up.
-    :return: a set of diffusion steps from the original process to use.
-    """
-    if type == "uniform":
-        for i in range(1, num_timesteps):
-            if len(range(0, num_timesteps, i)) == desired_count:
-                return range(0, num_timesteps, i)
-        raise ValueError(
-            f"cannot create exactly {desired_count} steps with an integer stride"
-        )
-    elif type == "quad":
-        seq = np.linspace(0, np.sqrt(num_timesteps * 0.8), desired_count) ** 2
-        seq = [int(s) for s in list(seq)]
-        return seq
-    else:
-        raise NotImplementedError
-
-
 def get_dataset(config):
     # TODO: Add support for dynamically adding **kwargs directly via config
     # Parse config
@@ -154,47 +131,6 @@ def import_modules_into_registry():
     import samplers
 
 
-def plot_interpolations(interpolations, save_path=None, figsize=(10, 5)):
-    N = len(interpolations)
-    # Plot all the quantities
-    fig, ax = plt.subplots(nrows=1, ncols=N, figsize=figsize)
-
-    for i, inter in enumerate(interpolations):
-        ax[i].imshow(inter.squeeze().permute(1, 2, 0))
-        ax[i].axis("off")
-
-    if save_path is not None:
-        plt.savefig(save_path, dpi=300, pad_inches=0)
-
-
-def compare_interpolations(
-    interpolations_1,
-    interpolations_2,
-    save_path=None,
-    figsize=(10, 2),
-    denorm=True,
-):
-    assert len(interpolations_1) == len(interpolations_2)
-    N = len(interpolations_1)
-    # Plot all the quantities
-    fig, ax = plt.subplots(nrows=2, ncols=N, figsize=figsize)
-
-    for i, (inter_1, inter_2) in enumerate(zip(interpolations_1, interpolations_2)):
-        # De-Norm
-        inter_1 = 0.5 * inter_1 + 0.5 if denorm else inter_1
-        # inter_2 = 0.5 * inter_2 + 0.5 if denorm else inter_2
-
-        # Plot
-        ax[0, i].imshow(inter_1.squeeze().permute(1, 2, 0))
-        ax[0, i].axis("off")
-
-        ax[1, i].imshow(inter_2.squeeze().permute(1, 2, 0))
-        ax[1, i].axis("off")
-
-    if save_path is not None:
-        plt.savefig(save_path, dpi=100, pad_inches=0)
-
-
 def convert_to_np(obj):
     obj = obj.permute(0, 2, 3, 1).contiguous()
     obj = obj.detach().cpu().numpy()
@@ -241,19 +177,3 @@ def save_as_np(obj, file_name="output", denorm=True):
     for i, out in enumerate(obj_list):
         current_file_name = file_name + "_%d.npy" % i
         np.save(current_file_name, out)
-
-
-def compare_samples(samples, save_path=None, figsize=(6, 3)):
-    # Plot all the quantities
-    ncols = len(samples)
-    fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=figsize)
-
-    for idx, (caption, img) in enumerate(samples.items()):
-        ax[idx].imshow(img.permute(1, 2, 0))
-        ax[idx].set_title(caption)
-        ax[idx].axis("off")
-
-    if save_path is not None:
-        plt.savefig(save_path, dpi=100, pad_inches=0)
-
-    plt.close()
