@@ -19,7 +19,7 @@ diffusion:
       ch_mult: [1,2,2,2,3]
       num_res_blocks: 2
       attn_resolutions: [16,]
-      dropout: 0.1
+      dropout: 0.2
       resamp_with_conv: True
       noise_cond: True
       fir: False

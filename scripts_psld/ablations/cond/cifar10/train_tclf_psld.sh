@@ -1,0 +1,31 @@
+python main/train_clf.py +dataset=cifar10/cifar10_es3sde \
+                     dataset.clf.data.root=\'/home/pandeyk1/datasets/\' \
+                     dataset.clf.data.name='cifar10' \
+                     dataset.clf.data.norm=True \
+                     dataset.clf.data.hflip=True \
+                     dataset.clf.data.return_target=True \
+                     dataset.clf.model.pl_module='tclf_wrapper' \
+                     dataset.clf.model.clf_fn.in_ch=6 \
+                     dataset.clf.model.clf_fn.nf=128 \
+                     dataset.clf.model.clf_fn.ch_mult=[1,2,3,4] \
+                     dataset.clf.model.clf_fn.num_res_blocks=4 \
+                     dataset.clf.model.clf_fn.attn_resolutions=[16,8] \
+                     dataset.clf.model.clf_fn.dropout=0.1 \
+                     dataset.clf.model.clf_fn.n_cls=10 \
+                     dataset.diffusion.model.sde.beta_min=8.0 \
+                     dataset.diffusion.model.sde.beta_max=8.0 \
+                     dataset.diffusion.model.sde.decomp_mode='lower' \
+                     dataset.diffusion.model.sde.nu=4.0 \
+                     dataset.diffusion.model.sde.gamma=0 \
+                     dataset.diffusion.model.sde.kappa=0.04 \
+                     dataset.clf.training.loss.name='tce_loss' \
+                     dataset.clf.training.seed=0 \
+                     dataset.clf.training.chkpt_interval=100 \
+                     dataset.clf.training.fp16=False \
+                     dataset.clf.training.batch_size=64 \
+                     dataset.clf.training.epochs=2000 \
+                     dataset.clf.training.accelerator='gpu' \
+                     dataset.clf.training.devices=[1,3,5,6] \
+                     dataset.clf.training.results_dir=\'/home/pandeyk1/es3sde_results/ablations/cond/controllable/es3sde_tclf_gamma=0_nu=4.0_cifar10_continuous_clf=ncsnppclf/\' \
+                     dataset.clf.training.workers=1 \
+                     dataset.clf.training.chkpt_prefix=\"tclf_gamma=0_nu=4.0_cifar10_Feb27\"

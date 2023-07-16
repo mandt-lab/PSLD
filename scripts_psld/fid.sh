@@ -1,0 +1,1 @@
+fidelity --gpu 0 --fid --input1 /home/pandeyk1/itsam_results/cifar10/ema_expts/es3sde_hsm_gamma=0.01_nu=4.01_ema=0.9998_ramp=True_cifar10_continuous_sfn=ncsnpp_nres=4_chmult=222/samples_10k/epoch=2000/cvv_50/images/ --input2 cifar10-train
