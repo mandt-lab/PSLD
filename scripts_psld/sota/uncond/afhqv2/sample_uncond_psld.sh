@@ -1,4 +1,3 @@
-ulimit -n 64000
 python main/eval/sample.py +dataset=afhqv2/afhqv2128_psld \
                      dataset.diffusion.data.root=\'/home/pandeyk1/datasets/afhqv2/\' \
                      dataset.diffusion.data.name='afhqv2' \
