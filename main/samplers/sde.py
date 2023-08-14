@@ -318,7 +318,7 @@ class SSCSSampler(Sampler):
 
         # Predict score
         eps_pred = self.score_fn(u.type(torch.float32), t.type(torch.float32))
-        score = self.sde.get_score(u, 0, self.sde.mm_0, eps_pred, t)
+        score = self.sde.get_score(eps_pred, 0, self.sde.mm_0, t)
         score_x, score_m = torch.chunk(score, 2, dim=1)
 
         # Euler update

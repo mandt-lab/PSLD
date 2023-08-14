@@ -30,7 +30,7 @@ class PSLD(SDE):
         self.mm_0 = self.kappa * self.m
         self.eps = config.model.sde.numerical_eps
         self.decomp_mode = config.model.sde.decomp_mode
-        assert self.decomp_mode == ["lower", "upper"]
+        assert self.decomp_mode in ["lower", "upper"]
 
     def __repr__(self):
         return f"Initialized SDE with m_inv:{self.m_inv}, gamma: {self.gamma}, nu: {self.nu}, Decomp mode: {self.decomp_mode}"
@@ -227,7 +227,7 @@ class PSLD(SDE):
         xx_t, xm_t, mm_t = self._cov(xx_0, mm_0, t)
         return mu_t, (xx_t, xm_t, mm_t)
 
-    def get_score(self, xx_0, mm_0, eps, t):
+    def get_score(self, eps, xx_0, mm_0, t):
         """Returns the score given epsilon (predicted or just randomly sampled)"""
         var = self._cov(xx_0, mm_0, t)
 
@@ -352,7 +352,7 @@ class PSLD(SDE):
 
         # scale the score by 0.5 for the prob. flow formulation
         eps_pred = score_fn(u_t.type(torch.float32), t.type(torch.float32))
-        score = self.get_score(u_t, 0, self.mm_0, eps_pred, t)
+        score = self.get_score(eps_pred, 0, self.mm_0, t)
         score = 0.5 * score if probability_flow else score
 
         # Reverse drift
