@@ -98,15 +98,6 @@ def get_dataset(config):
         t_list.append(T.RandomHorizontalFlip())
     transform = T.Compose(t_list)
 
-    c_transform = None
-    if config.data.apply_cond:
-        logger.info(
-            "Found conditional transforms. Will construct a conditional dataset"
-        )
-        c_transform = T.Compose(
-            [T.Resize((config.data.cond_size, config.data.cond_size))]
-        )
-
     # Get dataset
     dataset_cls = get_module(category="datasets", name=name.lower())
     if dataset_cls is None:
@@ -118,7 +109,6 @@ def get_dataset(config):
         root,
         norm=norm,
         transform=transform,
-        cond_transform=c_transform,
         return_target=config.data.return_target,
     )
 

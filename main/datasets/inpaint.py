@@ -38,4 +38,4 @@ class InpaintDataset(Dataset):
         return img, mask
 
     def __len__(self):
-        return self.config.evaluation.n_samples
+        return min(self.config.evaluation.n_samples, len(self.dataset))

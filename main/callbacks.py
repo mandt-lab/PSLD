@@ -140,7 +140,6 @@ class InpaintingImageWriter(BasePredictionWriter):
         is_norm=True,
         is_augmented=True,
         save_batch=False,
-        conditional=False,
     ):
         super().__init__(write_interval)
         assert eval_mode in ["sample", "recons"]
