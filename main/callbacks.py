@@ -63,7 +63,7 @@ class EMAWeightUpdate(Callback):
                 targ.mul_(self.tau).add_(src, alpha=1 - self.tau)
 
 
-# TODO: Add Support for saving momentum states
+# TODO: Add Support for saving momentum images
 class SimpleImageWriter(BasePredictionWriter):
     """Pytorch Lightning Callback for writing a batch of images to disk."""
 

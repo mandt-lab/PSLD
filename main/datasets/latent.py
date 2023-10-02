@@ -4,8 +4,9 @@ from util import register_module
 
 @register_module(category="datasets", name="latent")
 class SDELatentDataset(Dataset):
-    # A dataset to generate samples from the equilibrium distribution
-    # of the forward SDE (useful during sampling)
+    """A dataset for generating samples from the equilibrium distribution
+    of the forward SDE (useful during sampling)
+    """
     def __init__(self, sde, config):
         self.sde = sde
         self.num_samples = config.evaluation.n_samples

@@ -9,6 +9,9 @@ from util import data_scaler, register_module
 
 @register_module(category="datasets", name="celeba64")
 class CelebADataset(Dataset):
+    """Implementation of the CelebA dataset.
+    Downloaded from https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
+    """
     def __init__(self, root, norm=True, subsample_size=None, transform=None, **kwargs):
         if not os.path.isdir(root):
             raise ValueError(f"The specified root: {root} does not exist")

@@ -9,6 +9,9 @@ from util import data_scaler, register_module
 
 @register_module(category="datasets", name="afhqv2")
 class AFHQv2Dataset(Dataset):
+    """Implementation of the AFHQv2 dataset.
+    Downloaded from https://github.com/clovaai/stargan-v2
+    """
     def __init__(
         self,
         root,

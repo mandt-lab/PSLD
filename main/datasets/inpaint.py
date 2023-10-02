@@ -9,6 +9,9 @@ import torchvision.transforms as T
 
 @register_module(category="datasets", name="inpaint")
 class InpaintDataset(Dataset):
+    """Dataset for generating corrupted images. The images from the base dataset are masked with
+    MNIST to generate images with missing pixels.
+    """
     def __init__(self, config, dataset):
         # Parent dataset (must return only images)
         self.config = config
