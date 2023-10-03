@@ -19,7 +19,6 @@ python main/eval/sample.py +dataset=cifar10/cifar10_psld \
                      dataset.diffusion.model.sde.gamma=0.02 \
                      dataset.diffusion.model.sde.kappa=0.04 \
                      dataset.diffusion.model.sde.decomp_mode='lower' \
-                     dataset.diffusion.model.sde.use_ms=False \
                      dataset.diffusion.evaluation.seed=0 \
                      dataset.diffusion.evaluation.sample_prefix='gpu' \
                      dataset.diffusion.evaluation.devices=8 \
