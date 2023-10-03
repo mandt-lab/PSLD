@@ -1,0 +1,171 @@
+diffusion:
+  data:
+    root: ???
+    name: "afhqv2"
+    image_size: 128
+    hflip: True
+    num_channels: 3
+    norm: True
+    return_target: False
+
+  model:
+    pl_module: 'sde_wrapper'
+    score_fn:
+      name: "ncsnpp"
+      in_ch: 6
+      out_ch: 6
+      nonlinearity: "swish"
+      nf : 128
+      ch_mult: [1,2,2,2,3]
+      num_res_blocks: 2
+      attn_resolutions: [16,]
+      dropout: 0.2
+      resamp_with_conv: True
+      noise_cond: True
+      fir: False
+      fir_kernel: [1,3,3,1]
+      skip_rescale: True
+      resblock_type: "biggan"
+      progressive: "none"
+      progressive_input: "none"
+      progressive_combine: "sum"
+      embedding_type: "positional"
+      init_scale: 0.0
+      fourier_scale: 16
+    sde:
+      name: "psld"
+      beta_min: 8.0
+      beta_max: 8.0
+      nu: 4.01
+      gamma: 0.01
+      kappa: 0.04
+      decomp_mode: "lower"
+      numerical_eps: 1e-9
+      n_timesteps: 1000
+      is_augmented: True
+
+  training:
+    seed: 0
+    continuous: True
+    mode: 'hsm'
+    loss:
+      name: "psld_score_loss"
+      l_type: "l2"
+      reduce_mean: True
+      weighting: "fid"
+    optimizer:
+      name: "Adam"
+      lr: 1e-4
+      beta_1: 0.9
+      beta_2: 0.999
+      weight_decay: 0
+      eps: 1e-8
+      warmup: 5000
+      grad_clip: 1.0
+    train_eps: 1e-5
+    fp16: False
+    use_ema: True
+    ema_decay: 0.9999
+    batch_size: 32
+    epochs: 5000
+    log_step: 1
+    accelerator: "gpu"
+    devices: [0]
+    chkpt_interval: 1
+    restore_path: ""
+    results_dir: ???
+    workers: 1
+    chkpt_prefix: ""
+
+  evaluation:
+    sampler:
+      name: em_sde
+    seed: 0
+    chkpt_path: ???
+    save_path: ???
+    n_discrete_steps: 1000
+    denoise: True
+    eval_eps: 1e-3
+    stride_type: uniform
+    use_pflow: False
+    sample_from: "target"
+    accelerator: "gpu"
+    devices: [0]
+    n_samples: 50000
+    workers: 2
+    batch_size: 64
+    save_mode: image
+    sample_prefix: "gpu"
+    path_prefix: ""
+
+clf:
+  data:
+    root: ???
+    name: afhqv2
+    image_size: 128
+    hflip: true
+    num_channels: 3
+    norm: true
+    return_target: true
+
+  model:
+    pl_module: tclf_wrapper
+    clf_fn:
+      name: ncsnpp_clf
+      in_ch: 6
+      nonlinearity: swish
+      nf: 128
+      ch_mult: [1,2,2,2]
+      num_res_blocks: 2
+      attn_resolutions: [16]
+      dropout: 0.1
+      resamp_with_conv: true
+      noise_cond: true
+      fir: false
+      fir_kernel: [1,3,3,1]
+      skip_rescale: true
+      resblock_type: biggan
+      progressive: none
+      progressive_input: none
+      progressive_combine: sum
+      embedding_type: positional
+      init_scale: 0
+      fourier_scale: 16
+      n_cls: ???
+
+  training:
+    seed: 0
+    continuous: true
+    loss:
+      name: tce_loss
+      l_type: l2
+      reduce_mean: true
+    optimizer:
+      name: Adam
+      lr: 0.0002
+      beta_1: 0.9
+      beta_2: 0.999
+      weight_decay: 0
+      eps: 1e-8
+      warmup: 5000
+    fp16: false
+    batch_size: 32
+    epochs: 500
+    log_step: 1
+    accelerator: gpu
+    devices: [0]
+    chkpt_interval: 1
+    restore_path: ""
+    results_dir: ???
+    workers: 1
+    chkpt_prefix: ""
+
+  evaluation:
+    seed: 0
+    chkpt_path: ???
+    accelerator: gpu
+    devices: [0]
+    workers: 1
+    batch_size: 64
+    clf_temp: 1.0
+    label_to_sample: 0

@@ -1,0 +1,33 @@
+python main/train_sde.py +dataset=celeba64/celeba64_psld \
+                     dataset.diffusion.data.root=\'/home/pandeyk1/datasets/img_align_celeba\' \
+                     dataset.diffusion.data.name='celeba64' \
+                     dataset.diffusion.data.norm=True \
+                     dataset.diffusion.data.hflip=True \
+                     dataset.diffusion.model.pl_module='sde_wrapper' \
+                     dataset.diffusion.model.score_fn.in_ch=6 \
+                     dataset.diffusion.model.score_fn.out_ch=6 \
+                     dataset.diffusion.model.score_fn.nf=128 \
+                     dataset.diffusion.model.score_fn.ch_mult=[1,2,2,2] \
+                     dataset.diffusion.model.score_fn.num_res_blocks=4 \
+                     dataset.diffusion.model.score_fn.attn_resolutions=[16] \
+                     dataset.diffusion.model.score_fn.dropout=0.1 \
+                     dataset.diffusion.model.score_fn.progressive_input='residual' \
+                     dataset.diffusion.model.score_fn.fir=True \
+                     dataset.diffusion.model.score_fn.embedding_type='fourier' \
+                     dataset.diffusion.model.sde.decomp_mode='lower' \
+                     dataset.diffusion.model.sde.nu=4.005 \
+                     dataset.diffusion.model.sde.gamma=0.005 \
+                     dataset.diffusion.model.sde.kappa=0.04 \
+                     dataset.diffusion.training.loss.name='psld_score_loss' \
+                     dataset.diffusion.training.seed=0 \
+                     dataset.diffusion.training.chkpt_interval=25 \
+                     dataset.diffusion.training.mode='hsm' \
+                     dataset.diffusion.training.fp16=False \
+                     dataset.diffusion.training.use_ema=True \
+                     dataset.diffusion.training.batch_size=16 \
+                     dataset.diffusion.training.epochs=500 \
+                     dataset.diffusion.training.accelerator='gpu' \
+                     dataset.diffusion.training.devices=8 \
+                     dataset.diffusion.training.results_dir=\'/home/pandeyk1/psld_results/sota/uncond/celeba64/psld_hsm_gamma=0.005_nu=4.005_celeba64_continuous_sfn=ncsnpp_chmult=1222_nres=4/\' \
+                     dataset.diffusion.training.workers=1 \
+                     dataset.diffusion.training.chkpt_prefix=\"hsm_ablation_gamma=0.005_nu=4.005_celeba64_17thFeb23\"

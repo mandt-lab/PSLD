@@ -1,0 +1,34 @@
+python main/eval/sample.py +dataset=cifar10/cifar10_psld \
+                     dataset.diffusion.data.root=\'/home/pandeyk1/datasets/\' \
+                     dataset.diffusion.data.name='cifar10' \
+                     dataset.diffusion.data.norm=True \
+                     dataset.diffusion.data.hflip=True \
+                     dataset.diffusion.model.score_fn.in_ch=6 \
+                     dataset.diffusion.model.score_fn.out_ch=6 \
+                     dataset.diffusion.model.score_fn.nf=128 \
+                     dataset.diffusion.model.score_fn.ch_mult=[2,2,2] \
+                     dataset.diffusion.model.score_fn.num_res_blocks=8 \
+                     dataset.diffusion.model.score_fn.attn_resolutions=[16] \
+                     dataset.diffusion.model.score_fn.dropout=0.15 \
+                     dataset.diffusion.model.score_fn.progressive_input='residual' \
+                     dataset.diffusion.model.score_fn.fir=True \
+                     dataset.diffusion.model.score_fn.embedding_type='fourier' \
+                     dataset.diffusion.model.sde.beta_min=8.0 \
+                     dataset.diffusion.model.sde.beta_max=8.0 \
+                     dataset.diffusion.model.sde.nu=4.02 \
+                     dataset.diffusion.model.sde.gamma=0.02 \
+                     dataset.diffusion.model.sde.kappa=0.04 \
+                     dataset.diffusion.model.sde.decomp_mode='lower' \
+                     dataset.diffusion.evaluation.seed=0 \
+                     dataset.diffusion.evaluation.sample_prefix='gpu' \
+                     dataset.diffusion.evaluation.devices=8 \
+                     dataset.diffusion.evaluation.save_path=\'/home/pandeyk1/psld_results/sota/uncond/psld_hsm_gamma=0.02_nu=4.02_cifar10_continuous_sfn=ncsnpp_nres=8_chmult=222/speedvsquality_50k/em_uniform/\' \
+                     dataset.diffusion.evaluation.batch_size=16 \
+                     dataset.diffusion.evaluation.stride_type='uniform' \
+                     dataset.diffusion.evaluation.sample_from='target' \
+                     dataset.diffusion.evaluation.workers=1 \
+                     dataset.diffusion.evaluation.chkpt_path=\'/home/pandeyk1/psld_results/sota/uncond/psld_hsm_gamma=0.02_nu=4.02_cifar10_continuous_sfn=ncsnpp_nres=8_chmult=222/checkpoints/psld-hsm_gamma=0.02_nu=4.02_cifar10_continuous_sfn=ncsnpp_17thFeb-epoch=2349-loss=0.0201.ckpt\' \
+                     dataset.diffusion.evaluation.sampler.name="em_sde" \
+                     dataset.diffusion.evaluation.n_samples=50000 \
+                     dataset.diffusion.evaluation.n_discrete_steps=50 \
+                     dataset.diffusion.evaluation.path_prefix="50"

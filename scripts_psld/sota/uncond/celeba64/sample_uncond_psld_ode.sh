@@ -1,0 +1,35 @@
+python main/eval/sample.py +dataset=celeba64/celeba64_psld \
+                     dataset.diffusion.data.root=\'/home/pandeyk1/datasets/img_align_celeba\' \
+                     dataset.diffusion.data.name='celeba64' \
+                     dataset.diffusion.data.norm=True \
+                     dataset.diffusion.data.hflip=True \
+                     dataset.diffusion.model.score_fn.in_ch=6 \
+                     dataset.diffusion.model.score_fn.out_ch=6 \
+                     dataset.diffusion.model.score_fn.nf=128 \
+                     dataset.diffusion.model.score_fn.ch_mult=[1,2,2,2] \
+                     dataset.diffusion.model.score_fn.num_res_blocks=4 \
+                     dataset.diffusion.model.score_fn.attn_resolutions=[16] \
+                     dataset.diffusion.model.score_fn.dropout=0.1 \
+                     dataset.diffusion.model.score_fn.progressive_input='residual' \
+                     dataset.diffusion.model.score_fn.fir=True \
+                     dataset.diffusion.model.score_fn.embedding_type='fourier' \
+                     dataset.diffusion.model.sde.beta_min=8.0 \
+                     dataset.diffusion.model.sde.beta_max=8.0 \
+                     dataset.diffusion.model.sde.nu=4.005 \
+                     dataset.diffusion.model.sde.gamma=0.005 \
+                     dataset.diffusion.model.sde.kappa=0.04 \
+                     dataset.diffusion.model.sde.decomp_mode='lower' \
+                     dataset.diffusion.evaluation.seed=0 \
+                     dataset.diffusion.evaluation.sample_prefix='gpu' \
+                     dataset.diffusion.evaluation.devices=7 \
+                     dataset.diffusion.evaluation.save_path=\'/home/pandeyk1/psld_results/sota/uncond/celeba64/psld_hsm_gamma=0.005_nu=4.005_celeba64_continuous_sfn=ncsnpp_chmult=1222_nres=4/samples_10k/epoch=500_ode/\' \
+                     dataset.diffusion.evaluation.batch_size=4 \
+                     dataset.diffusion.evaluation.sample_from='target' \
+                     dataset.diffusion.evaluation.workers=0 \
+                     dataset.diffusion.evaluation.chkpt_path=\'/home/pandeyk1/psld_results/sota/uncond/celeba64/psld_hsm_gamma=0.005_nu=4.005_celeba64_continuous_sfn=ncsnpp_chmult=1222_nres=4/checkpoints/psld-hsm_ablation_gamma=0.005_nu=4.005_celeba64_17thFeb23-epoch=499-loss=0.0041.ckpt\' \
+                     dataset.diffusion.evaluation.sampler.name="bb_ode" \
+                     +dataset.diffusion.evaluation.sampler.solver="RK45" \
+                     +dataset.diffusion.evaluation.sampler.rtol=1e-5 \
+                     +dataset.diffusion.evaluation.sampler.atol=1e-5 \
+                     dataset.diffusion.evaluation.n_samples=10000 \
+                     dataset.diffusion.evaluation.path_prefix=\'tol=1e-5\'
