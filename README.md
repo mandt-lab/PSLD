@@ -136,7 +136,7 @@ python main/eval/sample.py +dataset=cifar10/cifar10_psld \
 We evaluate sample quality using FID scores. We compute FID scores using the `torch-fidelity` package. 
 
 ## Pretrained Checkpoints
-We are currently organizing all checkpoints and will release them shortly.
+Pre-trained PSLD checkpoints can be found [here](https://personalmicrosoftsoftware-my.sharepoint.com/:f:/g/personal/pandeyk1_personalmicrosoftsoftware_uci_edu/EhehC1yAF1pKv1Vp2rZpMTsBG9v1dyjmvmGzkJSWkjPsfQ?e=fSTVao)
 
 ## Citation
 If you find the code useful for your research, please consider citing our ICCV'23 paper:
