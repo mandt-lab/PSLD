@@ -2,7 +2,7 @@
 
 <div align="center">
   <a href="https://kpandey008.github.io/" target="_blank">Kushagra&nbsp;Pandey</a> &emsp; <b>&middot;</b> &emsp;
-  <a href="http://latentspace.cc/" target="_blank">Stephan&nbsp;Mandt</a> 
+  <a href="https://www.stephanmandt.com" target="_blank">Stephan&nbsp;Mandt</a> 
 </div>
 <br>
 
